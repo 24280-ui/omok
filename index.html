@@ -1,0 +1,3197 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>렌주 오목 AI · 동아리 부스</title>
+</head>
+<body>
+<div id="omok-app">
+    <h2 style="margin-bottom:8px;">렌주 오목 AI</h2>
+
+    <div id="omok-start-screen"><div class="start-layout">
+        <div class="rules-panel">
+            <strong>처음 오셨나요? 렌주 오목 규칙</strong><br>
+            • 흑이 먼저 둡니다. 빈 격자점을 클릭하세요.<br>
+            • <strong>모든 난이도에서 내 차례마다 20초!</strong> 시간 초과 시 패배합니다.<br>
+            • 남은 5초는 빨간 바와 경고음으로 알려 줍니다. AI가 생각하는 시간은 제외됩니다.<br>
+            • 가로·세로·대각선으로 흑은 정확히 5개, 백은 5개 이상 연결하면 승리!<br>
+            • 흑은 삼삼(열린 삼 2개 이상), 사사(사 2개 이상), 장목(6개 이상)이 금수입니다.<br>
+            • 흑이 금수에 두면 패배하며 이유가 표시됩니다. 정확한 5목 완성이 우선입니다.<br>
+            • 삼은 합법적으로 열린 사로 늘릴 수 있어야 인정합니다. 백에게는 금수가 없습니다.
+<details><summary>운영자 설정 · 전적 저장</summary>        <p id="record-storage" style="font-size:12px;"></p>
+        <button onclick="resetBoothRecords()" style="font-size:12px;">운영자: 전적 초기화</button>
+</details></div>
+        <div class="choice-panel">
+        <h3>1. 참가자 정보를 입력하세요</h3>
+        <div class="participant-fields">
+            <label for="student-id">학번
+                <input id="student-id" type="text" inputmode="numeric" maxlength="20"
+                       pattern="[0-9A-Za-z-]+" autocomplete="off" placeholder="예: 10101" required>
+            </label>
+            <label for="student-name">이름
+                <input id="student-name" type="text" maxlength="30" autocomplete="off"
+                       placeholder="예: 김오목" required>
+            </label>
+        </div>
+        <p style="font-size:12px;color:#555;">학번·이름과 승리 기록은 이 브라우저에 저장됩니다. 같은 학번은 최고 기록 하나만 랭킹에 표시합니다.</p>
+        <h3>2. 난이도를 선택하세요</h3>
+        <div class="difficulty-choice-row">
+            <button id="difficulty-very-easy" class="selection-button"
+                    onclick="selectDifficulty('very-easy')">
+                쉬움<br><small id="record-very-easy"></small>
+            </button>
+            <button id="difficulty-normal" class="selection-button"
+                    onclick="selectDifficulty('normal')">
+                보통<br><small id="record-normal"></small>
+            </button>
+            <button id="difficulty-strong" class="selection-button"
+                    onclick="selectDifficulty('strong')">최강<br><small id="record-strong"></small></button>
+        </div>
+
+        <p style="font-size:13px;color:#555;max-width:530px;">쉬움: 가끔 열린 3 방어를 놓칩니다 · 보통: 최대 2수 탐색 · 최강: 기보 기반 초반 운영과 한 수당 최대 약 8초 탐색</p>
+        <p style="font-size:12px;">전적은 AI 기준 누적 승·무·패입니다. 중도 종료는 집계하지 않습니다.</p>
+        <h3>3. 플레이할 돌을 선택하세요</h3>
+        <p>흑돌은 먼저 두고 금수가 적용됩니다.</p>
+        <div class="stone-choice-row">
+            <button id="color-black" class="stone-choice"
+                    onclick="selectStoneColor(1)">
+                <span class="choice-stone black-circle"></span>흑돌 선택
+            </button>
+            <button id="color-white" class="stone-choice"
+                    onclick="selectStoneColor(2)">
+                <span class="choice-stone white-circle"></span>백돌 선택
+            </button>
+        </div>
+        <button id="game-start-button" class="start-button"
+                onclick="startSelectedGame()" disabled>
+            게임 시작
+        </button>
+        <button class="control-button ranking-link" onclick="openRankings()">🏆 승리 랭킹 보기</button>
+    </div></div></div>
+
+    <div id="omok-game-screen" style="display:none;">
+<div class="game-layout"><div class="board-area">        <canvas id="omok-board" width="560" height="560"></canvas>
+        <div style="margin:10px auto;max-width:560px;text-align:left;">
+            <div id="turn-clock-label" style="font-weight:bold;margin-bottom:5px;">플레이어 착수 제한: 20초</div>
+            <div id="turn-clock" role="progressbar" aria-label="플레이어 남은 착수 시간" aria-valuemin="0" aria-valuemax="20" aria-valuenow="20" style="height:16px;background:#e5e7eb;border-radius:8px;overflow:hidden;">
+                <div id="turn-clock-fill" style="height:100%;width:100%;background:#22c55e;"></div>
+            </div>
+        </div>
+</div><div class="game-side">
+        <div id="player-label" class="participant-label"></div>
+        <div id="omok-status" role="status"></div>
+        <div id="game-time-label" class="time-note">플레이어 누적 시간: 0.000초 · AI 생각 시간 제외</div>
+        <div id="last-move-label" style="margin:6px;color:#1d4ed8;">파란 테두리 = 가장 최근에 놓은 돌</div>
+        <div class="game-buttons">
+            <button id="draw-game-button" class="control-button draw-button" onclick="requestDraw()">🤝 무승부로 종료</button>
+            <button id="game-ranking-button" class="control-button" onclick="openRankings()" disabled>🏆 승리 랭킹 보기</button>
+            <button class="control-button" onclick="resetOmokGame()">
+                🔄 같은 돌로 다시 시작
+            </button>
+            <button class="control-button menu-button" onclick="returnToMenu()">
+                ↩ 참가자·난이도·돌 선택
+            </button>
+        </div>
+    </div></div></div>
+<section id="omok-ranking-screen" style="display:none;" aria-labelledby="ranking-title">
+    <h3 id="ranking-title">🏆 오목 승리 랭킹</h3>
+    <p>최강 → 보통 → 쉬움 순으로, 같은 난이도에서는 더 빨리 이긴 사람이 높습니다.</p>
+    <p class="time-note">시간 = 플레이어 누적 착수 시간(AI 생각 시간 제외). 같은 학번은 최고 기록 하나만 표시합니다.</p>
+    <p id="ranking-storage" class="time-note" role="status"></p>
+    <div class="ranking-table-wrap"><table class="ranking-table">
+        <thead><tr><th scope="col">순위</th><th scope="col">학번</th><th scope="col">이름</th><th scope="col">난이도</th><th scope="col">승리 시간</th></tr></thead>
+        <tbody id="ranking-body"></tbody>
+    </table></div>
+    <button class="control-button" onclick="closeRankings()">↩ 돌아가기</button>
+    <details class="ranking-tools"><summary>운영자: 랭킹 백업·합치기</summary>
+        <p class="time-note">여러 PC의 랭킹 JSON을 내보낸 뒤 한 PC에서 불러오면 합칠 수 있습니다. 실시간 자동 공유는 하지 않습니다.</p>
+        <button class="control-button" onclick="exportRankings('json')">JSON 백업</button>
+        <button class="control-button" onclick="exportRankings('csv')">CSV 명단 저장</button>
+        <label class="control-button import-label" for="ranking-import">JSON 불러와 합치기</label>
+        <input id="ranking-import" type="file" accept=".json,application/json" hidden>
+        <button class="control-button menu-button" onclick="resetRankings()">랭킹 초기화</button>
+    </details>
+</section>
+<div class="audio-panel">    <label style="display:block;margin:10px;"><input id="sound-toggle" type="checkbox" onchange="toggleStoneSound(this.checked)"> 착수음 켜기</label>
+    <div style="margin:8px;font-size:14px;">
+        <label><input id="music-toggle" type="checkbox" onchange="toggleBackgroundMusic(this.checked)"> 배경음악 켜기</label>
+        <label style="margin-left:12px;">음량 <input aria-label="배경음악 음량" type="range" min="0" max="100" value="25" style="width:100px;vertical-align:middle;" oninput="setBackgroundVolume(this.value)"></label>
+        <div id="music-status" style="font-size:12px;color:#555;">잔잔한 반복 연주 · 체크하면 재생됩니다.</div>
+    </div>
+</div></div>
+
+<style>
+    #omok-app {
+        display: inline-block;
+        padding: 18px;
+        border: 1px solid #cccccc;
+        border-radius: 12px;
+        background-color: #fafafa;
+        font-family: Arial, sans-serif;
+        text-align: center;
+    }
+
+    #omok-status {
+        margin: 10px 0 14px 0;
+        padding: 10px;
+        min-height: 24px;
+        background-color: white;
+        border: 1px solid #dddddd;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+    }
+
+    #omok-start-screen {
+        width: 520px;
+        padding: 30px 18px;
+        box-sizing: border-box;
+        background: #ffffff;
+        border: 1px solid #dddddd;
+        border-radius: 12px;
+    }
+
+    .stone-choice-row {
+        display: flex;
+        justify-content: center;
+        gap: 18px;
+        margin: 24px 0 18px;
+    }
+
+    .difficulty-choice-row {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        margin: 16px 0 28px;
+    }
+
+    .selection-button {
+        width: 150px;
+        padding: 12px;
+        border: 2px solid #aaaaaa;
+        border-radius: 10px;
+        background: #f2f2f2;
+        font-size: 17px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .selection-button.selected,
+    .stone-choice.selected {
+        border-color: #1d7a35;
+        background: #dff3e3;
+        box-shadow: 0 0 0 3px rgba(29, 122, 53, 0.15);
+    }
+
+    .stone-choice {
+        width: 180px;
+        padding: 16px;
+        border: 2px solid #8b5a2b;
+        border-radius: 12px;
+        background: #d9a85f;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .stone-choice:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .choice-stone {
+        display: inline-block;
+        width: 28px;
+        height: 28px;
+        margin-right: 8px;
+        border-radius: 50%;
+        vertical-align: middle;
+    }
+
+    .black-circle {
+        background: radial-gradient(circle at 35% 30%, #666, #050505 65%);
+        border: 1px solid #000;
+    }
+
+    .white-circle {
+        background: radial-gradient(circle at 35% 30%, #fff, #d5d5d5 75%);
+        border: 1px solid #888;
+    }
+
+    .start-button {
+        width: 250px;
+        padding: 13px;
+        border: none;
+        border-radius: 10px;
+        background: #287d3c;
+        color: white;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .start-button:disabled {
+        background: #bbbbbb;
+        cursor: not-allowed;
+    }
+
+    #omok-board {
+        display: block;
+        background-color: #d9a85f;
+        border: 4px solid #704214;
+        border-radius: 4px;
+        cursor: pointer;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+    }
+
+    .game-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .control-button {
+        margin-top: 14px;
+        padding: 10px 22px;
+        border: none;
+        border-radius: 8px;
+        background-color: #f0ad4e;
+        color: #222222;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .control-button:hover {
+        background-color: #ec971f;
+    }
+
+    .menu-button {
+        background-color: #dddddd;
+    }
+
+    .menu-button:hover {
+        background-color: #cccccc;
+    }
+
+#omok-app, #omok-app * {box-sizing:border-box;}
+#omok-app {display:block;width:min(1120px,100%);margin:auto;padding:14px;background:#f8fafc;color:#172033;}
+#omok-app h2 {margin:0 0 12px!important;font-size:24px;}
+#omok-app h3 {font-size:18px;margin:12px 0 8px;}
+#omok-app p {margin:8px 0;line-height:1.45;}
+#omok-start-screen {width:100%;padding:16px;}
+.start-layout {display:grid;grid-template-columns:minmax(270px,.9fr) minmax(360px,1.1fr);gap:24px;align-items:start;}
+.rules-panel {text-align:left;background:#eef4ff;padding:16px;border-radius:10px;line-height:1.85;font-size:15px;}
+.rules-panel details {margin-top:14px;font-size:12px;}
+.rules-panel summary {cursor:pointer;}
+#omok-app .difficulty-choice-row,#omok-app .stone-choice-row {gap:10px;margin:10px 0;}
+#omok-app .selection-button,#omok-app .stone-choice {width:auto;flex:1;min-width:0;padding:12px 7px;font-size:17px;}
+#omok-app .selection-button small {font-size:12px;white-space:nowrap;}
+#omok-app .start-button {width:100%;margin-top:10px;}
+.audio-panel {display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;font-size:13px;margin-top:8px;}
+.audio-panel>label,.audio-panel>div {margin:0!important;}
+#music-status {display:inline-block;margin-left:8px;}
+.game-layout {display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:20px;align-items:center;}
+.board-area {width:min(560px,calc(100dvh - 210px),100%);margin:auto;}
+#omok-board {width:100%;height:auto;aspect-ratio:1;}
+#omok-status {font-size:17px;line-height:1.6;margin:0 0 16px;padding:14px;}
+#omok-app .game-buttons {flex-direction:column;gap:10px;margin-top:24px;}
+#omok-app .control-button {margin-top:0;padding:12px 8px;}
+#last-move-label {line-height:1.5;font-size:14px;}
+@media(max-height:700px) and (min-width:781px) {
+ #omok-app {padding:10px;} #omok-start-screen {padding:12px;}
+ .rules-panel {font-size:14px;line-height:1.6;padding:12px;}
+ #omok-app h3 {margin:8px 0 6px;} #omok-app p {margin:6px 0;}
+ #omok-app .selection-button,#omok-app .stone-choice {padding:9px 6px;}
+ #music-status {display:none;}
+}
+@media(max-width:780px) {
+ .start-layout,.game-layout {grid-template-columns:1fr;gap:12px;}
+ .board-area {width:min(560px,100%);}
+ #omok-app .game-buttons {flex-direction:row;margin-top:12px;}
+ .game-side {max-width:560px;width:100%;margin:auto;}
+ #omok-status {margin-bottom:8px;}
+ .rules-panel {font-size:14px;line-height:1.6;}
+}
+
+/* Fill the available window while preserving the square board. */
+#omok-app {
+ display:flex;flex-direction:column;width:100%;max-width:none;
+ min-height:calc(100dvh - 16px);margin:0;padding:clamp(10px,1.5vw,26px);
+ border-radius:12px;
+}
+#omok-app h2 {font-size:clamp(24px,2.2vw,38px);margin-bottom:clamp(10px,1.5vh,20px)!important;}
+#omok-start-screen,#omok-game-screen {flex:1;width:100%;}
+#omok-start-screen {padding:clamp(14px,2vw,36px);}
+.start-layout {min-height:calc(100dvh - 190px);align-items:center;gap:clamp(24px,4vw,70px);}
+.rules-panel {font-size:clamp(15px,1.25vw,22px);line-height:1.85;padding:clamp(16px,2vw,36px);}
+#omok-app h3 {font-size:clamp(18px,1.6vw,28px);}
+#omok-app .selection-button,#omok-app .stone-choice {
+ font-size:clamp(17px,1.45vw,25px);padding:clamp(12px,2vh,24px) 10px;
+}
+#omok-app .selection-button small {font-size:clamp(12px,1vw,17px);}
+#omok-app .start-button {font-size:clamp(19px,1.6vw,28px);padding:clamp(14px,2vh,24px);}
+.game-layout {height:100%;min-height:calc(100dvh - 155px);grid-template-columns:minmax(0,1fr) minmax(270px,28%);gap:clamp(20px,3vw,50px);}
+.board-area {width:min(calc(100dvh - 195px),100%);max-width:none;}
+#omok-status {font-size:clamp(18px,1.5vw,26px);padding:clamp(14px,2vw,28px);}
+#omok-app .control-button {font-size:clamp(16px,1.25vw,22px);padding:16px 10px;}
+#last-move-label {font-size:clamp(14px,1.1vw,19px);}
+.audio-panel {margin-top:10px;flex-shrink:0;}
+@media(max-height:700px) and (min-width:781px) {
+ #omok-app {padding:8px;} #omok-app h2 {font-size:24px;}
+ #omok-start-screen {padding:12px;}
+ .start-layout {min-height:calc(100dvh - 130px);gap:24px;}
+ .rules-panel {font-size:14px;padding:14px;line-height:1.65;}
+ #omok-app h3 {font-size:18px;}
+ #omok-app .selection-button,#omok-app .stone-choice {font-size:17px;padding:10px;}
+ #omok-app .start-button {font-size:18px;padding:12px;}
+ .game-layout {min-height:calc(100dvh - 110px);}
+ .board-area {width:min(calc(100dvh - 155px),100%);}
+}
+@media(max-width:780px) {
+ #omok-app {min-height:calc(100dvh - 16px);}
+ .start-layout,.game-layout {min-height:0;height:auto;grid-template-columns:1fr;}
+ .board-area {width:100%;}
+ .rules-panel {font-size:14px;line-height:1.6;}
+}
+/* Booth participant form and ranking; existing board layout is retained. */
+.participant-fields {display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left;}
+.participant-fields label {font-size:15px;font-weight:bold;}
+.participant-fields input {display:block;width:100%;margin-top:5px;padding:11px;border:1px solid #aaa;border-radius:7px;font-size:17px;}
+.participant-label {margin-bottom:10px;font-weight:bold;overflow-wrap:anywhere;}
+.time-note {font-size:13px;color:#475569;line-height:1.6;}
+#omok-app .ranking-link {width:100%;margin-top:10px;background:#dbeafe;}
+#omok-app .draw-button {background:#cbd5e1;}
+#omok-app .control-button:disabled {opacity:.5;cursor:not-allowed;}
+#omok-ranking-screen {padding:clamp(12px,3vw,32px);background:#fff;border:1px solid #ddd;border-radius:12px;flex:1;}
+.ranking-table-wrap {overflow-x:auto;margin:20px 0;}
+.ranking-table {border-collapse:collapse;width:100%;min-width:420px;text-align:left;font-size:16px;}
+.ranking-table th,.ranking-table td {padding:12px 10px;border-bottom:1px solid #ddd;overflow-wrap:anywhere;}
+.ranking-table th {background:#eef4ff;}
+.ranking-table tbody tr:nth-child(even) {background:#f8fafc;}
+.ranking-tools {margin-top:24px;text-align:left;}
+.ranking-tools summary {cursor:pointer;}
+.ranking-tools .control-button {display:inline-block;margin:6px 4px 0 0;}
+.import-label {cursor:pointer;}
+@media(max-width:780px) {
+ #omok-app .game-buttons {flex-wrap:wrap;}
+ #omok-app .game-buttons .control-button {flex:1 1 42%;}
+ .ranking-table {font-size:14px;}
+}
+</style>
+
+<script>
+(function () {
+    const isEngineWorker = typeof document === "undefined";
+    const scriptSource = isEngineWorker ? "" : document.currentScript.textContent;
+    if (isEngineWorker) {
+        self.window = self;
+        const noop = () => {};
+        const context = new Proxy({}, {get: () => noop});
+        self.document = {getElementById: () => ({style: {}, classList: {toggle: noop},
+            width: 560, height: 560, getContext: () => context, addEventListener: noop})};
+    }
+
+    const BOARD_SIZE = 15;
+
+    const EMPTY = 0;
+    const BLACK = 1;
+    const WHITE = 2;
+
+    const canvas = document.getElementById("omok-board");
+    const ctx = canvas.getContext("2d");
+    const statusElement = document.getElementById("omok-status");
+    const startScreen = document.getElementById("omok-start-screen");
+    const gameScreen = document.getElementById("omok-game-screen");
+    const startButton = document.getElementById("game-start-button");
+    const rankingScreen = document.getElementById("omok-ranking-screen");
+    let currentParticipant = null;
+    let humanElapsedMs = 0;
+    let currentGameId = null;
+    let rankingReturnScreen = 'start';
+
+    // 오목판 가장자리 여백
+    const MARGIN = 35;
+
+    // 격자점 사이의 거리
+    const CELL_SIZE =
+        (canvas.width - MARGIN * 2) / (BOARD_SIZE - 1);
+
+    // 돌 크기
+    const STONE_RADIUS = CELL_SIZE * 0.43;
+
+    let board;
+    let currentPlayer;
+    let gameOver;
+    let humanPlayer = null;
+    let aiPlayer = null;
+    let aiThinking = false;
+    let aiTimer = null;
+    let selectedColor = null;
+    let selectedDifficulty = null;
+    let difficulty = "very-easy";
+    let searchDeadline = 0;
+    let strongWorker = null;
+    let strongWorkerUrl = null;
+    let strongWatchdog = null;
+
+
+    let lastMove=null, moveNumber=0, resultRecorded=false;
+    let soundEnabled=false, stoneAudio=null;
+    const RECORD_KEY='renju-booth-records-ai-v2';
+    const emptyRecords=()=>Object.fromEntries(['very-easy','normal','strong'].map(k=>[k,{win:0,draw:0,loss:0}]));
+    let boothRecords=emptyRecords(), recordsPersistent=true;
+    function loadRecords() {
+        try {
+            let raw=JSON.parse(localStorage.getItem(RECORD_KEY)||'null');
+            // 이전 플레이어 기준 전적을 AI 기준으로 한 번만 변환한다.
+            if(raw===null) {
+                const previous=JSON.parse(localStorage.getItem('renju-booth-records-v1')||'null');
+                if(previous) raw=Object.fromEntries(Object.keys(boothRecords).map(k=>
+                    [k,{win:previous[k]?.loss,draw:previous[k]?.draw,loss:previous[k]?.win}]));
+            }
+            for(const k of Object.keys(boothRecords)) for(const field of ['win','draw','loss'])
+                if(Number.isSafeInteger(raw?.[k]?.[field])&&raw[k][field]>=0)
+                    boothRecords[k][field]=raw[k][field];
+            localStorage.setItem(RECORD_KEY,JSON.stringify(boothRecords));
+        } catch(e) {recordsPersistent=false;}
+        renderRecords();
+    }
+    function renderRecords() {
+        for(const [k,v] of Object.entries(boothRecords))
+            document.getElementById('record-'+k).textContent=`${v.win}승 ${v.draw}무 ${v.loss}패`;
+        document.getElementById('record-storage').textContent=recordsPersistent?
+            '같은 브라우저 저장 공간에 기록됩니다. 브라우저 데이터 삭제·실행 환경 변경 시 사라질 수 있습니다.':
+            '브라우저 저장을 사용할 수 없어 현재 실행 중에만 전적을 유지합니다.';
+    }
+    function saveRecords() {
+        try {localStorage.setItem(RECORD_KEY,JSON.stringify(boothRecords));}
+        catch(e) {recordsPersistent=false;}
+        renderRecords();
+    }
+    function recordResult(winner) {
+        if(resultRecorded||humanPlayer===null) return;
+        resultRecorded=true;
+        const key=winner===null?'draw':winner===aiPlayer?'win':'loss';
+        boothRecords[difficulty][key]++;
+        saveRecords();
+        if(winner===humanPlayer) recordHumanVictory();
+    }
+    window.resetBoothRecords=function() {
+        if(!confirm('모든 난이도의 누적 전적을 초기화할까요?')) return;
+        boothRecords=emptyRecords();saveRecords();
+    };
+    // Keep the old difficulty key so existing booth totals continue to load.
+    const LEVEL_NAMES = {'very-easy':'쉬움',normal:'보통',strong:'최강'};
+    const LEVEL_ORDER = {'very-easy':1,normal:2,strong:3};
+    const RANKING_KEY = 'renju-booth-ranking-v1';
+    let rankingWins = [], rankingPersistent = true;
+    function readParticipant() {
+        return {
+            studentId:document.getElementById('student-id').value.trim(),
+            name:document.getElementById('student-name').value.trim().replace(/\s+/g,' ')
+        };
+    }
+    function validParticipant(p) {
+        return p && typeof p.studentId==='string' && /^[0-9A-Za-z-]{1,20}$/.test(p.studentId) &&
+            typeof p.name==='string' && p.name.length>0 && p.name.length<=30 &&
+            !/[\u0000-\u001f\u007f]/.test(p.name);
+    }
+    function formatElapsed(ms) {return (ms/1000).toFixed(3)+'초';}
+    function currentHumanElapsed() {
+        return humanElapsedMs+(humanDeadline===null?0:
+            Math.max(0,Math.min(HUMAN_TURN_MS,HUMAN_TURN_MS-humanDeadline+performance.now())));
+    }
+    function renderGameTime() {
+        document.getElementById('game-time-label').textContent=
+            '플레이어 누적 시간: '+formatElapsed(currentHumanElapsed())+' · AI 생각 시간 제외';
+    }
+    function validRankingEntry(x) {
+        return x && validParticipant(x) && Object.hasOwn(LEVEL_ORDER,x.difficulty) &&
+            Number.isSafeInteger(x.elapsedMs) && x.elapsedMs>0 &&
+            Number.isInteger(x.moves) && x.moves>0 && x.moves<=BOARD_SIZE*BOARD_SIZE &&
+            typeof x.id==='string' && x.id.length>0 && x.id.length<=100 &&
+            typeof x.wonAt==='string' && Number.isFinite(Date.parse(x.wonAt));
+    }
+    function cleanRankingEntry(x) {
+        return {id:x.id,studentId:x.studentId,name:x.name,difficulty:x.difficulty,
+            elapsedMs:x.elapsedMs,moves:x.moves,wonAt:x.wonAt};
+    }
+    function mergeWins(...groups) {
+        const byId=new Map();
+        for(const group of groups) for(const x of group) if(validRankingEntry(x))
+            byId.set(x.id,cleanRankingEntry(x));
+        return [...byId.values()];
+    }
+    function readSavedWins() {
+        try {
+            const raw=JSON.parse(localStorage.getItem(RANKING_KEY)||'null');
+            return Array.isArray(raw?.wins)&&raw.version===1&&raw.timing==='human-thinking-ms'?mergeWins(raw.wins):[];
+        } catch(e) {rankingPersistent=false;return [];}
+    }
+    function rankingPayload() {
+        return {version:1,timing:'human-thinking-ms',wins:rankingWins};
+    }
+    function saveRankings() {
+        try {localStorage.setItem(RANKING_KEY,JSON.stringify(rankingPayload()));}
+        catch(e) {rankingPersistent=false;}
+        renderRankings();
+    }
+    function compareRankings(a,b) {
+        return LEVEL_ORDER[b.difficulty]-LEVEL_ORDER[a.difficulty] ||
+            a.elapsedMs-b.elapsedMs || Date.parse(a.wonAt)-Date.parse(b.wonAt) || a.id.localeCompare(b.id);
+    }
+    function bestRankings() {
+        const byStudent=new Map();
+        for(const win of rankingWins) {
+            const previous=byStudent.get(win.studentId);
+            if(!previous||compareRankings(win,previous)<0) byStudent.set(win.studentId,win);
+        }
+        return [...byStudent.values()].sort(compareRankings);
+    }
+    function renderRankings() {
+        const body=document.getElementById('ranking-body');
+        body.replaceChildren();
+        const best=bestRankings();
+        if(!best.length) {
+            const row=document.createElement('tr'),cell=document.createElement('td');
+            cell.colSpan=5;cell.textContent='아직 승리 기록이 없습니다. 첫 승리에 도전하세요!';
+            row.appendChild(cell);body.appendChild(row);
+        }
+        let place=0;
+        best.forEach((win,i)=>{
+            if(!i||win.difficulty!==best[i-1].difficulty||win.elapsedMs!==best[i-1].elapsedMs) place=i+1;
+            const row=document.createElement('tr');
+            for(const value of [place,win.studentId,win.name,LEVEL_NAMES[win.difficulty],formatElapsed(win.elapsedMs)]) {
+                const cell=document.createElement('td');cell.textContent=String(value);row.appendChild(cell);
+            }
+            body.appendChild(row);
+        });
+        document.getElementById('ranking-storage').textContent=rankingPersistent?
+            '이 브라우저에 저장된 랭킹입니다. 여러 기기에서 자동으로 합쳐지지 않습니다.':
+            '브라우저 저장을 사용할 수 없어 현재 실행 중에만 유지됩니다. 종료 전에 JSON 백업을 저장하세요.';
+    }
+    function recordHumanVictory() {
+        if(!validParticipant(currentParticipant)||!currentGameId) return;
+        const win={...currentParticipant,id:currentGameId,difficulty,
+            elapsedMs:Math.max(1,Math.round(humanElapsedMs)),moves:moveNumber,wonAt:new Date().toISOString()};
+        rankingWins=mergeWins(readSavedWins(),rankingWins,[win]);saveRankings();
+    }
+    window.openRankings=function() {
+        // A running game's clock must not be bypassed by opening another screen.
+        if(humanPlayer!==null&&!gameOver) return;
+        rankingReturnScreen=gameScreen.style.display==='block'?'game':'start';
+        startScreen.style.display=gameScreen.style.display='none';
+        renderRankings();rankingScreen.style.display='block';
+    };
+    window.closeRankings=function() {
+        rankingScreen.style.display='none';
+        (rankingReturnScreen==='game'?gameScreen:startScreen).style.display='block';
+    };
+    window.exportRankings=function(kind) {
+        const best=bestRankings();
+        const quote=value=>'"'+String(value).replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';
+        let contents=JSON.stringify(rankingPayload(),null,2),type='application/json;charset=utf-8';
+        if(kind==='csv') {
+            const rows=[['순위','학번','이름','난이도','플레이어 시간(초)','승리 일시']];
+            let place=0;
+            best.forEach((x,i)=>{
+                if(!i||x.difficulty!==best[i-1].difficulty||x.elapsedMs!==best[i-1].elapsedMs) place=i+1;
+                rows.push([place,x.studentId,x.name,LEVEL_NAMES[x.difficulty],(x.elapsedMs/1000).toFixed(3),x.wonAt]);
+            });
+            contents='\ufeff'+rows.map(row=>row.map(quote).join(',')).join('\r\n');type='text/csv;charset=utf-8';
+        }
+        const url=URL.createObjectURL(new Blob([contents],{type})),link=document.createElement('a');
+        link.href=url;link.download='omok-ranking-'+Date.now()+'.'+(kind==='csv'?'csv':'json');
+        document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    };
+    window.importRankings=async function(file) {
+        if(!file) return;
+        try {
+            if(file.size>5*1024*1024) throw Error('백업 파일은 5MB 이하로 선택하세요.');
+            const data=JSON.parse(await file.text());
+            if(data.version!==1||data.timing!=='human-thinking-ms'||!Array.isArray(data.wins)||
+                data.wins.length>20000||!data.wins.every(validRankingEntry))
+                throw Error('이 프로그램에서 내보낸 정상적인 랭킹 JSON을 선택하세요.');
+            rankingWins=mergeWins(readSavedWins(),rankingWins,data.wins);saveRankings();
+            alert('랭킹을 합쳤습니다. 같은 게임 기록은 중복 집계하지 않습니다.');
+        } catch(e) {alert('불러오지 못했습니다: '+e.message);}
+        finally {document.getElementById('ranking-import').value='';}
+    };
+    window.resetRankings=function() {
+        if(!confirm('모든 참가자의 승리 랭킹을 초기화할까요? 필요한 기록은 먼저 JSON으로 백업하세요.')) return;
+        rankingWins=[];saveRankings();
+    };
+    function setGameControls(ended) {
+        document.getElementById('draw-game-button').disabled=ended;
+        document.getElementById('game-ranking-button').disabled=!ended;
+    }
+    window.requestDraw=function() {
+        if(gameOver||humanPlayer===null||expireHumanTurn()) return;
+        const agreed=confirm('이 대국을 무승부로 종료할까요? 승리 랭킹에는 등록되지 않습니다.');
+        // confirm() is blocking; recheck the real deadline after it closes.
+        if(gameOver||expireHumanTurn()) return;
+        if(agreed) finishGame(null,'🤝 무승부 버튼으로 대국을 종료했습니다.');
+        else tickHumanClock();
+    };
+    function prepareStoneAudio(force=false) {
+        if(!soundEnabled&&!force) return;
+        try {
+            const Audio=window.AudioContext||window.webkitAudioContext;
+            if(!Audio) return;
+            if(!stoneAudio) stoneAudio=new Audio();
+            if(stoneAudio.state==='suspended') stoneAudio.resume().catch(()=>{});
+        } catch(e) {}
+    }
+    window.toggleStoneSound=function(enabled) {soundEnabled=enabled;prepareStoneAudio();};
+    function playStoneSound() {
+        if(!soundEnabled) return;
+        prepareStoneAudio();
+        if(!stoneAudio||stoneAudio.state!=='running') return;
+        try {
+            // 파일 없이 합성하는 짧은 나무 타격음.
+            const t=stoneAudio.currentTime,osc=stoneAudio.createOscillator(),gain=stoneAudio.createGain();
+            osc.type='triangle';osc.frequency.setValueAtTime(950,t);
+            osc.frequency.exponentialRampToValueAtTime(160,t+0.045);
+            gain.gain.setValueAtTime(0.0001,t);gain.gain.exponentialRampToValueAtTime(0.22,t+0.002);
+            gain.gain.exponentialRampToValueAtTime(0.0001,t+0.07);
+            osc.connect(gain);gain.connect(stoneAudio.destination);
+            osc.onended=()=>{osc.disconnect();gain.disconnect();};
+            osc.start(t);osc.stop(t+0.08);
+        } catch(e) {}
+    }
+    // 외부 음원 다운로드 없이 브라우저에서 합성하는 반복 배경음악.
+    let musicAudio=null,musicGain=null,musicTimer=null,musicOn=false;
+    let musicVolume=0.25,musicStep=0,musicNext=0;
+    const musicVoices=new Set();
+    function stopBackgroundMusic() {
+        musicOn=false;
+        if(musicTimer!==null) clearInterval(musicTimer);
+        musicTimer=null;
+        for(const voice of musicVoices) {try {voice.stop();} catch(e) {}}
+        musicVoices.clear();
+        if(musicAudio&&musicAudio.state==='running') musicAudio.suspend().catch(()=>{});
+    }
+    function musicNote(midi,when,duration,level) {
+        const osc=musicAudio.createOscillator(),gain=musicAudio.createGain();
+        osc.type='sine';osc.frequency.value=440*Math.pow(2,(midi-69)/12);
+        gain.gain.setValueAtTime(0,when);
+        gain.gain.linearRampToValueAtTime(level,when+0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001,when+duration);
+        osc.connect(gain);gain.connect(musicGain);musicVoices.add(osc);
+        osc.onended=()=>{musicVoices.delete(osc);osc.disconnect();gain.disconnect();};
+        osc.start(when);osc.stop(when+duration+0.05);
+    }
+    function scheduleMusic() {
+        if(!musicOn||musicAudio.state!=='running') return;
+        // 느린 C–Am–F–G 아르페지오, 32박 반복.
+        const chords=[[48,52,55],[45,48,52],[41,45,48],[43,47,50]];
+        const pattern=[0,1,2,1,0,2,1,2];
+        if(musicNext<musicAudio.currentTime) musicNext=musicAudio.currentTime+0.05;
+        while(musicNext<musicAudio.currentTime+0.4) {
+            const chord=chords[Math.floor(musicStep/8)%4],step=musicStep%8;
+            musicNote(chord[pattern[step]]+12,musicNext,0.9,0.18);
+            if(step===0) musicNote(chord[0],musicNext,2.4,0.13);
+            musicStep=(musicStep+1)%32;musicNext+=0.52;
+        }
+    }
+    window.toggleBackgroundMusic=async function(enabled) {
+        if(!enabled) {
+            stopBackgroundMusic();
+            document.getElementById('music-status').textContent='배경음악 꺼짐';
+            return;
+        }
+        try {
+            const Audio=window.AudioContext||window.webkitAudioContext;
+            if(!Audio) throw Error('Audio unavailable');
+            if(!musicAudio) {
+                musicAudio=new Audio();musicGain=musicAudio.createGain();
+                musicGain.gain.value=musicVolume;musicGain.connect(musicAudio.destination);
+            }
+            musicOn=true;
+            await musicAudio.resume();
+            if(!musicOn) {musicAudio.suspend().catch(()=>{});return;}
+            if(musicAudio.state!=='running') throw Error('Audio blocked');
+            if(musicTimer!==null) clearInterval(musicTimer);
+            musicStep=0;musicNext=musicAudio.currentTime+0.05;
+            scheduleMusic();musicTimer=setInterval(scheduleMusic,150);
+            document.getElementById('music-status').textContent='배경음악 재생 중';
+        } catch(e) {
+            stopBackgroundMusic();document.getElementById('music-toggle').checked=false;
+            document.getElementById('music-status').textContent='소리를 재생할 수 없습니다. 브라우저 소리 설정을 확인하고 다시 켜 주세요.';
+        }
+    };
+    window.setBackgroundVolume=function(value) {
+        musicVolume=Math.max(0,Math.min(1,Number(value)/100));
+        if(musicGain) musicGain.gain.setTargetAtTime(musicVolume,musicAudio.currentTime,0.05);
+    };
+    if(!isEngineWorker) {
+        // 같은 화면에서 셀을 재실행해도 이전 음악이 겹치지 않도록 정리한다.
+        if(window.omokDisposeAudio) window.omokDisposeAudio();
+        window.omokDisposeAudio=()=>{
+            stopHumanClock();
+            stopBackgroundMusic();
+            if(musicAudio) musicAudio.close().catch(()=>{});
+            if(stoneAudio) stoneAudio.close().catch(()=>{});
+        };
+        window.addEventListener('pagehide',window.omokDisposeAudio,{once:true});
+    }
+
+    const HUMAN_TURN_MS=20000;
+    let humanTimer=null,humanDeadline=null,lastWarningSecond=null;
+    function stopHumanClock() {
+        humanElapsedMs=currentHumanElapsed();
+        if(humanTimer!==null) clearInterval(humanTimer);
+        humanTimer=null;humanDeadline=null;
+        renderGameTime();
+    }
+    function showClock(ms,label=null) {
+        const remaining=Math.max(0,ms),seconds=Math.ceil(remaining/1000);
+        const fill=document.getElementById('turn-clock-fill');
+        fill.style.width=`${Math.min(100,remaining/HUMAN_TURN_MS*100)}%`;
+        fill.style.background=remaining<=5000?'#ef4444':'#22c55e';
+        document.getElementById('turn-clock').setAttribute('aria-valuenow',seconds);
+        document.getElementById('turn-clock-label').textContent=label||`내 차례 · 남은 시간 ${seconds}초`;
+    }
+    function playTimeWarning() {
+        // 경고음은 선택형 착수음과 별개이며 게임 시작 클릭에서 오디오를 준비한다.
+        if(!stoneAudio||stoneAudio.state!=='running') return;
+        try {
+            const t=stoneAudio.currentTime,osc=stoneAudio.createOscillator(),gain=stoneAudio.createGain();
+            osc.type='sine';osc.frequency.value=880;
+            gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(0.14,t+0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001,t+0.15);
+            osc.connect(gain);gain.connect(stoneAudio.destination);
+            osc.onended=()=>{osc.disconnect();gain.disconnect();};osc.start(t);osc.stop(t+0.16);
+        } catch(e) {}
+    }
+    function expireHumanTurn() {
+        if(gameOver||currentPlayer!==humanPlayer||humanDeadline===null) return false;
+        if(performance.now()<humanDeadline) return false;
+        showClock(0,'시간 초과 · 20초가 지났습니다.');
+        finishGame(aiPlayer,'⏰ 플레이어의 착수 제한시간 20초가 지났습니다.');
+        return true;
+    }
+    function tickHumanClock() {
+        if(gameOver||currentPlayer!==humanPlayer) {stopHumanClock();return;}
+        if(humanDeadline===null||expireHumanTurn()) return;
+        const remaining=humanDeadline-performance.now();
+        showClock(remaining);renderGameTime();
+        const second=Math.ceil(remaining/1000);
+        if(remaining<=5000&&second>=1&&lastWarningSecond!==second) {
+            lastWarningSecond=second;playTimeWarning();
+        }
+    }
+    function startHumanClock() {
+        // 상태 안내가 다시 호출되어도 제한시간을 연장하지 않는다.
+        if(humanDeadline!==null||gameOver||currentPlayer!==humanPlayer) return;
+        humanDeadline=performance.now()+HUMAN_TURN_MS;lastWarningSecond=null;
+        showClock(HUMAN_TURN_MS);humanTimer=setInterval(tickHumanClock,100);
+    }
+
+    function drawLastMove() {
+        if(!lastMove) return;
+        const x=MARGIN+lastMove.col*CELL_SIZE,y=MARGIN+lastMove.row*CELL_SIZE;
+        ctx.save();ctx.beginPath();ctx.arc(x,y,STONE_RADIUS+2,0,Math.PI*2);
+        ctx.strokeStyle='#ffffff';ctx.lineWidth=2.5;ctx.stroke();
+        ctx.strokeStyle='#2563eb';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
+    }
+
+    // ---------------------------
+    // 게임 초기화
+    // ---------------------------
+
+    function createEmptyBoard() {
+        board = Array.from(
+            { length: BOARD_SIZE },
+            () => Array(BOARD_SIZE).fill(EMPTY)
+        );
+    }
+
+
+    window.selectDifficulty = function (value) {
+        selectedDifficulty = value;
+
+        document.getElementById("difficulty-very-easy")
+            .classList.toggle("selected", value === "very-easy");
+        document.getElementById("difficulty-normal")
+            .classList.toggle("selected", value === "normal");
+
+        document.getElementById("difficulty-strong").classList.toggle("selected", selectedDifficulty === "strong");
+        updateStartButton();
+    };
+
+
+    window.selectStoneColor = function (value) {
+        selectedColor = value;
+
+        document.getElementById("color-black")
+            .classList.toggle("selected", value === BLACK);
+        document.getElementById("color-white")
+            .classList.toggle("selected", value === WHITE);
+
+        updateStartButton();
+    };
+
+
+    function updateStartButton() {
+        startButton.disabled = !(
+            selectedColor !== null &&
+            selectedDifficulty !== null &&
+            validParticipant(readParticipant())
+        );
+    }
+
+
+    window.startSelectedGame = function () {
+        if (
+            selectedColor === null ||
+            selectedDifficulty === null ||
+            !validParticipant(readParticipant())
+        ) {
+            return;
+        }
+
+        currentParticipant=readParticipant();
+        document.getElementById('player-label').textContent=
+            currentParticipant.studentId+' · '+currentParticipant.name;
+        rankingScreen.style.display='none';
+        prepareStoneAudio(true);
+        humanPlayer = selectedColor;
+        aiPlayer =
+            humanPlayer === BLACK ? WHITE : BLACK;
+        difficulty = selectedDifficulty;
+
+        startScreen.style.display = "none";
+        gameScreen.style.display = "block";
+
+        window.resetOmokGame();
+    };
+
+
+    window.returnToMenu = function () {
+        stopHumanClock();
+        stopStrongWorker();
+        if (aiTimer !== null) {
+            clearTimeout(aiTimer);
+            aiTimer = null;
+        }
+
+        gameOver = true;
+        aiThinking = false;
+        humanPlayer = null;
+        aiPlayer = null;
+
+        rankingScreen.style.display = "none";
+        gameScreen.style.display = "none";
+        startScreen.style.display = "block";
+    };
+
+
+    window.resetOmokGame = function () {
+        stopHumanClock();
+        prepareStoneAudio(true);
+        showClock(HUMAN_TURN_MS,'플레이어 착수 제한: 20초');
+        stopStrongWorker();
+        if (humanPlayer === null) {
+            return;
+        }
+
+        if (aiTimer !== null) {
+            clearTimeout(aiTimer);
+            aiTimer = null;
+        }
+
+        createEmptyBoard();
+        lastMove=null;moveNumber=0;resultRecorded=false;
+        humanElapsedMs=0;
+        currentGameId=window.crypto?.randomUUID?.() || Date.now()+'-'+Math.random().toString(36).slice(2);
+        renderGameTime();setGameControls(false);
+        document.getElementById('last-move-label').textContent='파란 테두리 = 가장 최근에 놓은 돌';
+
+        currentPlayer = BLACK;
+        gameOver = false;
+        aiThinking = false;
+
+        drawBoard();
+
+        if (aiPlayer === BLACK) {
+            statusElement.innerHTML =
+                "🤖 AI가 흑돌 첫 수를 준비하고 있습니다.";
+            scheduleAiMove();
+        } else {
+            showTurnStatus();
+        }
+    };
+
+
+    // ---------------------------
+    // 오목판 그리기
+    // ---------------------------
+
+    function drawBoard() {
+        // 기존 그림을 지운다.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 나무색 배경
+        ctx.fillStyle = "#d9a85f";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawGrid();
+        drawStarPoints();
+        drawAllStones();
+        drawLastMove();
+    }
+
+
+    function drawGrid() {
+        ctx.beginPath();
+        ctx.strokeStyle = "#3d2917";
+        ctx.lineWidth = 1.2;
+
+        for (let i = 0; i < BOARD_SIZE; i++) {
+            const position = MARGIN + i * CELL_SIZE;
+
+            // 세로선
+            ctx.moveTo(position, MARGIN);
+            ctx.lineTo(
+                position,
+                canvas.height - MARGIN
+            );
+
+            // 가로선
+            ctx.moveTo(MARGIN, position);
+            ctx.lineTo(
+                canvas.width - MARGIN,
+                position
+            );
+        }
+
+        ctx.stroke();
+
+        // 바깥쪽 테두리를 조금 더 진하게 표시
+        ctx.strokeStyle = "#2c1c0f";
+        ctx.lineWidth = 2;
+
+        ctx.strokeRect(
+            MARGIN,
+            MARGIN,
+            CELL_SIZE * (BOARD_SIZE - 1),
+            CELL_SIZE * (BOARD_SIZE - 1)
+        );
+    }
+
+
+    // 오목판의 화점 표시
+    function drawStarPoints() {
+        const starPoints = [
+            [3, 3],
+            [3, 11],
+            [7, 7],
+            [11, 3],
+            [11, 11]
+        ];
+
+        ctx.fillStyle = "#2c1c0f";
+
+        for (const [row, col] of starPoints) {
+            const x = MARGIN + col * CELL_SIZE;
+            const y = MARGIN + row * CELL_SIZE;
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+
+    // ---------------------------
+    // 돌 그리기
+    // ---------------------------
+
+    function drawAllStones() {
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                if (board[row][col] !== EMPTY) {
+                    drawStone(
+                        row,
+                        col,
+                        board[row][col]
+                    );
+                }
+            }
+        }
+    }
+
+
+    function drawStone(row, col, player) {
+        const x = MARGIN + col * CELL_SIZE;
+        const y = MARGIN + row * CELL_SIZE;
+
+        ctx.save();
+
+        // 돌에 자연스러운 입체감을 주는 그라데이션
+        const gradient = ctx.createRadialGradient(
+            x - STONE_RADIUS * 0.35,
+            y - STONE_RADIUS * 0.35,
+            STONE_RADIUS * 0.1,
+            x,
+            y,
+            STONE_RADIUS
+        );
+
+        if (player === BLACK) {
+            gradient.addColorStop(0, "#666666");
+            gradient.addColorStop(0.35, "#222222");
+            gradient.addColorStop(1, "#000000");
+        } else {
+            gradient.addColorStop(0, "#ffffff");
+            gradient.addColorStop(0.65, "#f4f4f4");
+            gradient.addColorStop(1, "#c8c8c8");
+        }
+
+        // 그림자
+        ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+        ctx.shadowBlur = 5;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 3;
+
+        ctx.beginPath();
+        ctx.arc(
+            x,
+            y,
+            STONE_RADIUS,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // 돌 테두리
+        ctx.shadowColor = "transparent";
+        ctx.strokeStyle =
+            player === BLACK ? "#000000" : "#999999";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+
+    // ---------------------------
+    // 클릭 좌표 처리
+    // ---------------------------
+
+    canvas.addEventListener("click", function (event) {
+        if (
+            gameOver ||
+            aiThinking ||
+            currentPlayer !== humanPlayer
+        ) {
+            return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+
+        // 화면 크기가 달라졌을 경우까지 고려한 좌표 계산
+        const mouseX =
+            (event.clientX - rect.left - canvas.clientLeft) *
+            (canvas.width / canvas.clientWidth);
+
+        const mouseY =
+            (event.clientY - rect.top - canvas.clientTop) *
+            (canvas.height / canvas.clientHeight);
+
+        // 가장 가까운 격자점 계산
+        const col = Math.round(
+            (mouseX - MARGIN) / CELL_SIZE
+        );
+
+        const row = Math.round(
+            (mouseY - MARGIN) / CELL_SIZE
+        );
+
+        // 오목판 범위 밖을 클릭한 경우
+        if (
+            row < 0 ||
+            row >= BOARD_SIZE ||
+            col < 0 ||
+            col >= BOARD_SIZE
+        ) {
+            return;
+        }
+
+        // 클릭 위치가 격자점에서 너무 멀면 무시
+        const intersectionX =
+            MARGIN + col * CELL_SIZE;
+
+        const intersectionY =
+            MARGIN + row * CELL_SIZE;
+
+        const distance = Math.sqrt(
+            Math.pow(mouseX - intersectionX, 2) +
+            Math.pow(mouseY - intersectionY, 2)
+        );
+
+        if (distance > CELL_SIZE * 0.48) {
+            return;
+        }
+
+        placeStone(row, col, "human");
+    });
+
+
+    // ---------------------------
+    // 돌 놓기
+    // ---------------------------
+
+    function placeStone(row, col, actor) {
+        if(gameOver) return false;
+        if(actor==='human'&&expireHumanTurn()) return false;
+        if (board[row][col] !== EMPTY) {
+            if (actor === "human") {
+                statusElement.innerHTML =
+                    "이미 돌이 놓여 있는 자리입니다.";
+            }
+            return false;
+        }
+
+        stopHumanClock();
+        const placedPlayer = currentPlayer;
+
+        board[row][col] = placedPlayer;
+        lastMove={row,col};moveNumber++;
+        drawBoard();
+        document.getElementById('last-move-label').textContent=
+            `최근 ${moveNumber}수: ${playerOwnerName(placedPlayer)} · ${stoneName(placedPlayer)} (파란 테두리)`;
+        playStoneSound();
+
+        // 흑은 정확히 5, 백은 5개 이상이면 승리한다.
+        const won =
+            placedPlayer === BLACK
+                ? hasExactFive(row, col, BLACK)
+                : hasFiveOrMore(row, col, WHITE);
+
+        if (won) {
+            finishGame(
+                placedPlayer,
+                `${stoneName(placedPlayer)}이 오목을 완성했습니다.`
+            );
+            return true;
+        }
+
+        // 금수는 사람과 AI의 구분 없이 흑에게 적용한다.
+        if (placedPlayer === BLACK) {
+            const forbiddenReason =
+                checkBlackForbiddenMove(row, col);
+
+            if (forbiddenReason !== null) {
+                finishGame(
+                    WHITE,
+                    "🚫 흑돌 금수입니다.<br>" + forbiddenReason
+                );
+                return true;
+            }
+        }
+
+        if (isBoardFull()) {
+            finishGame(null,"모든 자리가 찼습니다. 무승부입니다.");
+            return true;
+        }
+
+        currentPlayer =
+            placedPlayer === BLACK ? WHITE : BLACK;
+
+        showTurnStatus();
+
+        if (!gameOver && currentPlayer === aiPlayer) {
+            scheduleAiMove();
+        }
+
+        return true;
+    }
+
+
+    function stoneName(player) {
+        return player === BLACK ? "흑돌" : "백돌";
+    }
+
+
+    function playerOwnerName(player) {
+        return player === humanPlayer ? "플레이어" : "AI";
+    }
+
+
+    function showTurnStatus() {
+        if (gameOver) {
+            return;
+        }
+
+        const icon = currentPlayer === BLACK ? "⚫" : "⚪";
+        const levelName =
+            difficulty === "strong" ? "최강" : difficulty === "normal" ? "보통" : "쉬움";
+
+        if (currentPlayer === humanPlayer) {
+            startHumanClock();
+            statusElement.innerHTML =
+                `[${levelName}] ${icon} 플레이어 차례입니다. 격자점을 클릭하세요.`;
+        } else {
+            stopHumanClock();
+            showClock(HUMAN_TURN_MS,'AI 생각 중 · 내 차례가 되면 20초 시작');
+            statusElement.innerHTML =
+                `[${levelName}] 🤖 AI가 ${stoneName(aiPlayer)} 수를 생각하고 있습니다.`;
+        }
+    }
+
+
+    function finishGame(winner, reason) {
+        if(gameOver) return;
+        stopHumanClock();
+        stopStrongWorker();
+        if(aiTimer!==null) {clearTimeout(aiTimer);aiTimer=null;}
+        recordResult(winner);
+        gameOver = true;
+        aiThinking = false;
+        setGameControls(true);
+        showClock(HUMAN_TURN_MS,'대국 종료');
+
+        statusElement.innerHTML =
+            "<div style='padding:10px;background:#fff3cd;" +
+            "border-radius:7px;'>" +
+            reason + "<br>" +
+            (winner===null?'<strong>무승부입니다.</strong>':
+                `<strong>🎉 ${playerOwnerName(winner)} 승리!</strong>`)+
+            (winner===humanPlayer?`<br>승리 시간: ${formatElapsed(Math.round(humanElapsedMs))} · 랭킹에 반영했습니다.`:'') +
+            "</div>";
+    }
+
+
+    // ==========================================
+    // 쉬운 난이도 AI
+    // ==========================================
+
+    function scheduleAiMove() {
+        if (
+            gameOver ||
+            currentPlayer !== aiPlayer ||
+            aiThinking
+        ) {
+            return;
+        }
+
+        aiThinking = true;
+        showTurnStatus();
+        if (difficulty === "strong") {
+            launchStrongWorker();
+            return;
+        }
+
+        aiTimer = setTimeout(function () {
+            aiTimer = null;
+
+            if (gameOver || currentPlayer !== aiPlayer) {
+                aiThinking = false;
+                return;
+            }
+
+            const chosen = difficulty === "normal" ? chooseNormalAiMove() : chooseEasyAiMove();
+            const move = chosen ? normalSymmetricMove(chosen) : null;
+            aiThinking = false;
+
+            if (move === null) {
+                finishGame(null,"AI가 둘 수 있는 합법적인 자리가 없어 무승부로 종료합니다.");
+                return;
+            }
+
+            placeStone(move.row, move.col, "ai");
+        }, difficulty === "normal" ? 350 : 550);
+    }
+
+
+    function chooseEasyAiMove(baseline = false) {
+        const candidates = getCandidateMoves(aiPlayer);
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        // 1순위: AI가 지금 바로 이길 수 있으면 승리한다.
+        const winningMoves = candidates.filter(
+            move => isWinningMove(move.row, move.col, aiPlayer)
+        );
+
+        if (winningMoves.length > 0) {
+            return randomItem(winningMoves);
+        }
+
+        // 2순위: 플레이어가 다음 수에 이기는 자리를 막는다.
+        const humanWinningMoves = getCandidateMoves(humanPlayer)
+            .filter(
+                move => isWinningMove(
+                    move.row,
+                    move.col,
+                    humanPlayer
+                )
+            )
+            .filter(
+                move => isLegalMoveForPlayer(
+                    move.row,
+                    move.col,
+                    aiPlayer
+                )
+            );
+
+        if (humanWinningMoves.length > 0) {
+            return randomItem(humanWinningMoves);
+        }
+
+        /*
+        3순위: 열린 3을 방어하되, 쉬움은 35% 확률로 방어를 놓친다.
+        baseline=true는 수정 전 매우 쉬움의 판단을 보통 난이도에 재사용한다.
+        즉시 승리와 상대의 즉시 승리 방어(위의 1·2순위)는 그대로 유지한다.
+        */
+        const openThreeBlockingMoves =
+            getOpenThreeBlockingMoves(humanPlayer)
+                .filter(
+                    move => isLegalMoveForPlayer(
+                        move.row,
+                        move.col,
+                        aiPlayer
+                    )
+                );
+
+        const missOpenThree = !baseline && openThreeBlockingMoves.length>0 && Math.random()<0.35;
+        if (openThreeBlockingMoves.length > 0 && !missOpenThree) {
+            openThreeBlockingMoves.sort(
+                (a, b) =>
+                    evaluateEasyMove(b.row, b.col) -
+                    evaluateEasyMove(a.row, a.col)
+            );
+
+            return openThreeBlockingMoves[0];
+        }
+
+        // 4순위: 일반 상황에서 공격점수와 방어점수를 계산한다.
+        const scoredMoves = candidates.map(move => ({
+            row: move.row,
+            col: move.col,
+            score: evaluateEasyMove(move.row, move.col)
+        }));
+
+        scoredMoves.sort((a, b) => b.score - a.score);
+
+        if(missOpenThree) {
+            const blockingIds=new Set(openThreeBlockingMoves.map(m=>m.row*BOARD_SIZE+m.col));
+            const missed=scoredMoves.filter(m=>!blockingIds.has(m.row*BOARD_SIZE+m.col));
+            if(missed.length) return randomItem(missed.slice(0,8));
+        }
+
+        /*
+        쉬운 난이도는 완벽한 최선수만 고르지 않는다.
+        20% 확률로 넓은 후보 중 하나를 선택하고,
+        나머지는 상위 5개 중 무작위로 선택한다.
+        */
+        if (Math.random() < 0.20) {
+            return randomItem(scoredMoves);
+        }
+
+        return randomItem(scoredMoves.slice(0, 5));
+    }
+
+
+    // ==========================================
+    // 보통 난이도 AI: 기존 매우 쉬움과 기존 보통 사이(최대 2수 탐색)
+    // ==========================================
+
+    // 보통만 사용: 같은 점수는 무작위로, 큰 점수 차이는 그대로 유지한다.
+    function normalRandomItem(items) {
+        return items[Math.floor(Math.random() * items.length)];
+    }
+    function normalPickClose(scored) {
+        const best = Math.max(...scored.map(x => x.score));
+        // 승패가 탐색된 점수는 작은 일반 평가 차이처럼 섞지 않는다.
+        const tolerance = Math.abs(best) >= 90000000 ? 0 :
+            Math.min(800, Math.max(80, Math.abs(best) * 0.025));
+        const pool = scored.filter(x => best - x.score <= tolerance);
+        const weights = pool.map(x => Math.exp((x.score-best)/Math.max(1,tolerance/2)));
+        let ticket = Math.random() * weights.reduce((a,b)=>a+b,0);
+        for(let i=0;i<pool.length;i++) {
+            ticket -= weights[i];
+            if(ticket<=0) return {...pool[i].move};
+        }
+        return {...pool[pool.length-1].move};
+    }
+    function normalSymmetricMove(move) {
+        const choices = new Map();
+        if(!move) return null;
+        // Only the board's actual rotational symmetries are equivalent moves.
+        // Four directions: 0, 90, 180, 270 degrees; never rotate an asymmetric position.
+        for(let t=0;t<4;t++) {
+            let same=true;
+            for(let r=0;r<15 && same;r++) for(let c=0;c<15;c++) {
+                const m=openingTransform({row:r,col:c},t);
+                if(board[r][c]!==board[m.row][m.col]) {same=false;break;}
+            }
+            if(!same) continue;
+            const m=openingTransform(move,t);
+            if(isLegalMoveForPlayer(m.row,m.col,aiPlayer))
+                choices.set(m.row*15+m.col,m);
+        }
+        return {...move,...normalRandomItem([...choices.values()])};
+    }
+    function normalAllowsImmediateLoss(move) {
+        board[move.row][move.col]=aiPlayer;
+        try {
+            return getCandidateMoves(humanPlayer).some(m=>
+                isWinningMove(m.row,m.col,humanPlayer));
+        } finally {board[move.row][move.col]=EMPTY;}
+    }
+    function chooseNormalAiMove() {
+        const legalMoves = getCandidateMoves(aiPlayer);
+        if (!legalMoves.length) return null;
+        const winningMoves = legalMoves.filter(m=>isWinningMove(m.row,m.col,aiPlayer));
+        if (winningMoves.length) return normalRandomItem(winningMoves);
+        const urgentBlocks = getCandidateMoves(humanPlayer)
+            .filter(m=>isWinningMove(m.row,m.col,humanPlayer))
+            .filter(m=>isLegalMoveForPlayer(m.row,m.col,aiPlayer));
+        if (urgentBlocks.length) return normalRandomItem(urgentBlocks);
+
+        // 30% uses the old very-easy policy; otherwise do a shallower search.
+        if(Math.random()<0.30) return chooseEasyAiMove(true);
+        let rootMoves = getSearchMoves(aiPlayer, 7, true);
+        if (!rootMoves.length) return normalRandomItem(legalMoves);
+        const safe = rootMoves.filter(m=>!normalAllowsImmediateLoss(m));
+        if(safe.length) rootMoves=safe;
+        // 완료된 동일 깊이의 점수끼리만 비교한다.
+        let scored = rootMoves.map(move=>({move,score:move.score}));
+        let completedDepth=0;
+        searchDeadline=performance.now()+900;
+        for(const depth of [1,2]) {
+            try {
+                const result=searchRootAtDepth(rootMoves,depth);
+                scored=result.scored;
+                completedDepth=depth;
+                // 다음 깊이는 좋은 후보부터 검사하되 전체 후보 평가가 끝나야 반영한다.
+                rootMoves=result.scored.slice().sort((a,b)=>b.score-a.score).map(x=>x.move);
+            } catch(error) {
+                if(error!=="SEARCH_TIMEOUT") throw error;
+                break;
+            }
+        }
+        const move=normalPickClose(scored);
+        move.searchedDepth=completedDepth;
+        return move;
+    }
+    function searchRootAtDepth(rootMoves, depth) {
+        const scored=[];
+        for(const move of rootMoves) {
+            checkSearchTime();
+            board[move.row][move.col]=aiPlayer;
+            let score;
+            try {
+                if(isCurrentStoneWinning(move.row,move.col,aiPlayer)) score=100000000;
+                else {
+                    // 후보 사이 alpha를 공유하면 탈락 후보 점수가 상한값일 수 있다.
+                    // 무작위 선택에 쓰는 루트 점수는 각각 전체 창으로 계산한다.
+                    score=minimaxNormal(depth-1,humanPlayer,-Infinity,Infinity,1);
+                    if(Math.abs(score)<90000000)
+                        score+=normalForkBonus(move.row,move.col,aiPlayer);
+                }
+            } finally {board[move.row][move.col]=EMPTY;}
+            scored.push({move,score});
+        }
+        const best=scored.reduce((a,b)=>b.score>a.score?b:a);
+        return {move:best.move,score:best.score,scored};
+    }
+
+
+    function minimaxNormal(depth, player, alpha, beta, ply) {
+        checkSearchTime();
+
+        if (depth <= 0 || isBoardFull()) {
+            return evaluateNormalBoard();
+        }
+
+        const branchLimit = depth >= 5 ? 5 : 6;
+        const moves = getSearchMoves(player, branchLimit);
+
+        if (moves.length === 0) {
+            return evaluateNormalBoard();
+        }
+
+        const maximizing = player === aiPlayer;
+        let bestScore = maximizing ? -Infinity : Infinity;
+
+        for (const move of moves) {
+            checkSearchTime();
+            board[move.row][move.col] = player;
+
+            let score;
+
+            try {
+                if (isCurrentStoneWinning(move.row, move.col, player)) {
+                    score =
+                        player === aiPlayer
+                            ? 100000000 - ply
+                            : -100000000 + ply;
+                } else {
+                    const nextPlayer =
+                        player === BLACK ? WHITE : BLACK;
+
+                    score = minimaxNormal(
+                        depth - 1,
+                        nextPlayer,
+                        alpha,
+                        beta,
+                        ply + 1
+                    );
+                }
+            } finally {
+                board[move.row][move.col] = EMPTY;
+            }
+
+            if (maximizing) {
+                bestScore = Math.max(bestScore, score);
+                alpha = Math.max(alpha, bestScore);
+            } else {
+                bestScore = Math.min(bestScore, score);
+                beta = Math.min(beta, bestScore);
+            }
+
+            if (beta <= alpha) {
+                break;
+            }
+        }
+
+        return bestScore;
+    }
+
+
+    function checkSearchTime() {
+        if (performance.now() >= searchDeadline) {
+            throw "SEARCH_TIMEOUT";
+        }
+    }
+
+
+    function isCurrentStoneWinning(row, col, player) {
+        return player === BLACK
+            ? hasExactFive(row, col, BLACK)
+            : hasFiveOrMore(row, col, WHITE);
+    }
+
+
+    function getSearchMoves(player, limit, randomTies = false) {
+        const rawMoves = getRawNearbyMoves(1);
+
+        const ordered = rawMoves.map(move => ({
+            row: move.row,
+            col: move.col,
+            score: quickOrderingScore(
+                move.row,
+                move.col,
+                player
+            )
+        }));
+
+        if(randomTies) {
+            for(let i=ordered.length-1;i>0;i--) {
+                const j=Math.floor(Math.random()*(i+1));
+                [ordered[i],ordered[j]]=[ordered[j],ordered[i]];
+            }
+        }
+        ordered.sort((a, b) => b.score - a.score);
+
+        const legal = [];
+
+        // 점수가 높은 후보부터 검사해 불필요한 금수 계산을 줄인다.
+        for (const move of ordered.slice(0, Math.max(18, limit * 3))) {
+            if (isLegalMoveForPlayer(move.row, move.col, player)) {
+                legal.push(move);
+            }
+
+            if (legal.length >= limit) {
+                break;
+            }
+        }
+
+        return legal;
+    }
+
+
+    function getRawNearbyMoves(radius) {
+        if (!boardHasStone()) {
+            return [{ row: 7, col: 7 }];
+        }
+
+        const moveMap = new Map();
+
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                if (board[row][col] === EMPTY) {
+                    continue;
+                }
+
+                for (let dr = -radius; dr <= radius; dr++) {
+                    for (let dc = -radius; dc <= radius; dc++) {
+                        const r = row + dr;
+                        const c = col + dc;
+
+                        if (
+                            isInside(r, c) &&
+                            board[r][c] === EMPTY
+                        ) {
+                            moveMap.set(`${r},${c}`, { row: r, col: c });
+                        }
+                    }
+                }
+            }
+        }
+
+        return [...moveMap.values()];
+    }
+
+
+    function quickOrderingScore(row, col, player) {
+        const opponent = player === BLACK ? WHITE : BLACK;
+
+        board[row][col] = player;
+        let attack = evaluatePlacedStone(row, col, player);
+        board[row][col] = EMPTY;
+
+        board[row][col] = opponent;
+        const defense = evaluatePlacedStone(row, col, opponent);
+        board[row][col] = EMPTY;
+
+        const center =
+            14 - Math.abs(row - 7) - Math.abs(col - 7);
+
+        return attack + defense * 0.92 + center;
+    }
+
+
+    function evaluateNormalBoard() {
+        const rawMoves = getRawNearbyMoves(1);
+        let bestAi = 0;
+        let bestHuman = 0;
+        let secondAi = 0;
+        let secondHuman = 0;
+
+        for (const move of rawMoves) {
+            board[move.row][move.col] = aiPlayer;
+            const aiScore = evaluatePlacedStone(
+                move.row,
+                move.col,
+                aiPlayer
+            );
+            board[move.row][move.col] = EMPTY;
+
+            board[move.row][move.col] = humanPlayer;
+            const humanScore = evaluatePlacedStone(
+                move.row,
+                move.col,
+                humanPlayer
+            );
+            board[move.row][move.col] = EMPTY;
+
+            if (aiScore > bestAi) {
+                secondAi = bestAi;
+                bestAi = aiScore;
+            } else if (aiScore > secondAi) {
+                secondAi = aiScore;
+            }
+
+            if (humanScore > bestHuman) {
+                secondHuman = bestHuman;
+                bestHuman = humanScore;
+            } else if (humanScore > secondHuman) {
+                secondHuman = humanScore;
+            }
+        }
+
+        return (
+            bestAi + secondAi * 0.45 -
+            bestHuman * 1.08 - secondHuman * 0.5
+        );
+    }
+
+
+    /*
+    흑은 합법적인 4·3을 크게 우대한다.
+    백은 금수가 없으므로 3·3, 4·4, 4·3을 모두 우대한다.
+    */
+    function normalForkBonus(row, col, player) {
+        const fourDirections = countFourDirectionsFromMove(
+            row,
+            col,
+            player
+        );
+
+        const threeDirections = countOpenThreeDirectionsFromMove(
+            row,
+            col,
+            player
+        );
+
+        if (player === BLACK) {
+            return fourDirections >= 1 && threeDirections >= 1
+                ? 600000
+                : 0;
+        }
+
+        let bonus = 0;
+
+        if (fourDirections >= 2) {
+            bonus += 900000;
+        }
+        if (threeDirections >= 2) {
+            bonus += 350000;
+        }
+        if (fourDirections >= 1 && threeDirections >= 1) {
+            bonus += 650000;
+        }
+
+        return bonus;
+    }
+
+
+    function countFourDirectionsFromMove(row, col, player) {
+        let count = 0;
+
+        for (const [dr, dc] of RENJU_DIRECTIONS) {
+            let found = false;
+
+            for (let start = -4; start <= 0 && !found; start++) {
+                let playerCount = 0;
+                let emptyCell = null;
+                let blocked = false;
+
+                for (let index = 0; index < 5; index++) {
+                    const r = row + (start + index) * dr;
+                    const c = col + (start + index) * dc;
+
+                    if (!isInside(r, c)) {
+                        blocked = true;
+                        break;
+                    }
+
+                    if (board[r][c] === player) {
+                        playerCount++;
+                    } else if (board[r][c] === EMPTY) {
+                        if (emptyCell !== null) {
+                            blocked = true;
+                            break;
+                        }
+                        emptyCell = { row: r, col: c };
+                    } else {
+                        blocked = true;
+                        break;
+                    }
+                }
+
+                if (
+                    !blocked &&
+                    playerCount === 4 &&
+                    emptyCell !== null &&
+                    isWinningMove(
+                        emptyCell.row,
+                        emptyCell.col,
+                        player
+                    )
+                ) {
+                    found = true;
+                }
+            }
+
+            if (found) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+
+    function countOpenThreeDirectionsFromMove(row, col, player) {
+        let count = 0;
+
+        for (const [dr, dc] of RENJU_DIRECTIONS) {
+            let found = false;
+
+            for (let offset = -4; offset <= 4 && !found; offset++) {
+                if (offset === 0) {
+                    continue;
+                }
+
+                const extensionRow = row + offset * dr;
+                const extensionCol = col + offset * dc;
+
+                if (
+                    !isInside(extensionRow, extensionCol) ||
+                    board[extensionRow][extensionCol] !== EMPTY ||
+                    !isLegalMoveForPlayer(
+                        extensionRow,
+                        extensionCol,
+                        player
+                    )
+                ) {
+                    continue;
+                }
+
+                board[extensionRow][extensionCol] = player;
+
+                if (
+                    createsStraightOpenFourInDirection(
+                        row,
+                        col,
+                        extensionRow,
+                        extensionCol,
+                        player,
+                        dr,
+                        dc
+                    )
+                ) {
+                    found = true;
+                }
+
+                board[extensionRow][extensionCol] = EMPTY;
+            }
+
+            if (found) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+
+    function createsStraightOpenFourInDirection(
+        originRow,
+        originCol,
+        extensionRow,
+        extensionCol,
+        player,
+        dr,
+        dc
+    ) {
+        const forward = countDirection(
+            extensionRow,
+            extensionCol,
+            dr,
+            dc,
+            player
+        );
+
+        const backward = countDirection(
+            extensionRow,
+            extensionCol,
+            -dr,
+            -dc,
+            player
+        );
+
+        if (1 + forward + backward !== 4) {
+            return false;
+        }
+
+        const startRow = extensionRow - backward * dr;
+        const startCol = extensionCol - backward * dc;
+        const endRow = extensionRow + forward * dr;
+        const endCol = extensionCol + forward * dc;
+
+        let containsOrigin = false;
+
+        for (let index = 0; index < 4; index++) {
+            if (
+                startRow + index * dr === originRow &&
+                startCol + index * dc === originCol
+            ) {
+                containsOrigin = true;
+                break;
+            }
+        }
+
+        if (!containsOrigin) {
+            return false;
+        }
+
+        const beforeRow = startRow - dr;
+        const beforeCol = startCol - dc;
+        const afterRow = endRow + dr;
+        const afterCol = endCol + dc;
+
+        return (
+            isInside(beforeRow, beforeCol) &&
+            isInside(afterRow, afterCol) &&
+            board[beforeRow][beforeCol] === EMPTY &&
+            board[afterRow][afterCol] === EMPTY &&
+            isWinningMove(beforeRow, beforeCol, player) &&
+            isWinningMove(afterRow, afterCol, player)
+        );
+    }
+
+
+    function randomItem(items) {
+        return items[Math.floor(Math.random() * items.length)];
+    }
+
+
+    function boardHasStone() {
+        return board.some(
+            boardRow => boardRow.some(cell => cell !== EMPTY)
+        );
+    }
+
+
+    function getCandidateMoves(player) {
+        // 렌주에서 흑의 첫 수는 중앙에 둔다.
+        if (!boardHasStone()) {
+            return [{ row: 7, col: 7 }];
+        }
+
+        const candidateMap = new Map();
+
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                if (board[row][col] === EMPTY) {
+                    continue;
+                }
+
+                // 이미 놓인 돌에서 두 칸 이내만 후보로 만든다.
+                for (let dr = -2; dr <= 2; dr++) {
+                    for (let dc = -2; dc <= 2; dc++) {
+                        const nextRow = row + dr;
+                        const nextCol = col + dc;
+
+                        if (
+                            isInside(nextRow, nextCol) &&
+                            board[nextRow][nextCol] === EMPTY
+                        ) {
+                            candidateMap.set(
+                                `${nextRow},${nextCol}`,
+                                { row: nextRow, col: nextCol }
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        return [...candidateMap.values()].filter(
+            move => isLegalMoveForPlayer(
+                move.row,
+                move.col,
+                player
+            )
+        );
+    }
+
+
+    function isLegalMoveForPlayer(row, col, player) {
+        if (
+            !isInside(row, col) ||
+            board[row][col] !== EMPTY
+        ) {
+            return false;
+        }
+
+        if (player === WHITE) {
+            return true;
+        }
+
+        board[row][col] = BLACK;
+
+        const exactFive = hasExactFive(row, col, BLACK);
+        const legal =
+            exactFive ||
+            checkBlackForbiddenMove(row, col) === null;
+
+        board[row][col] = EMPTY;
+        return legal;
+    }
+
+
+    function isWinningMove(row, col, player) {
+        if (!isLegalMoveForPlayer(row, col, player)) {
+            return false;
+        }
+
+        board[row][col] = player;
+
+        const winning =
+            player === BLACK
+                ? hasExactFive(row, col, BLACK)
+                : hasFiveOrMore(row, col, WHITE);
+
+        board[row][col] = EMPTY;
+        return winning;
+    }
+
+
+    /*
+    상대가 이 자리에 두면 '양쪽이 열린 연속 4'가 되는지를 찾아
+    현재 존재하는 진짜 열린 3의 방어점을 반환한다.
+    */
+    function getOpenThreeBlockingMoves(player) {
+        const blockingMoves = [];
+
+        for (const move of getCandidateMoves(player)) {
+            board[move.row][move.col] = player;
+
+            const createsOpenFour =
+                createsStraightOpenFour(
+                    move.row,
+                    move.col,
+                    player
+                );
+
+            board[move.row][move.col] = EMPTY;
+
+            if (createsOpenFour) {
+                blockingMoves.push(move);
+            }
+        }
+
+        return blockingMoves;
+    }
+
+
+    function createsStraightOpenFour(row, col, player) {
+        for (const [dr, dc] of RENJU_DIRECTIONS) {
+            const forward = countDirection(
+                row,
+                col,
+                dr,
+                dc,
+                player
+            );
+
+            const backward = countDirection(
+                row,
+                col,
+                -dr,
+                -dc,
+                player
+            );
+
+            if (1 + forward + backward !== 4) {
+                continue;
+            }
+
+            const firstEndRow = row - (backward + 1) * dr;
+            const firstEndCol = col - (backward + 1) * dc;
+            const secondEndRow = row + (forward + 1) * dr;
+            const secondEndCol = col + (forward + 1) * dc;
+
+            if (
+                !isInside(firstEndRow, firstEndCol) ||
+                !isInside(secondEndRow, secondEndCol) ||
+                board[firstEndRow][firstEndCol] !== EMPTY ||
+                board[secondEndRow][secondEndCol] !== EMPTY
+            ) {
+                continue;
+            }
+
+            /*
+            양쪽 끝 모두에서 실제 승리가 가능해야 열린 4다.
+            흑은 정확히 5와 금수 여부까지 함께 검사된다.
+            */
+            const firstEndWins = isWinningMove(
+                firstEndRow,
+                firstEndCol,
+                player
+            );
+
+            const secondEndWins = isWinningMove(
+                secondEndRow,
+                secondEndCol,
+                player
+            );
+
+            if (firstEndWins && secondEndWins) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    function evaluateEasyMove(row, col) {
+        let attackScore = 0;
+        let defenseScore = 0;
+
+        board[row][col] = aiPlayer;
+        attackScore = evaluatePlacedStone(row, col, aiPlayer);
+        board[row][col] = EMPTY;
+
+        if (isLegalMoveForPlayer(row, col, humanPlayer)) {
+            board[row][col] = humanPlayer;
+            defenseScore = evaluatePlacedStone(
+                row,
+                col,
+                humanPlayer
+            );
+            board[row][col] = EMPTY;
+        }
+
+        // 중앙에 가까운 자리에 작은 보너스를 준다.
+        const centerBonus =
+            14 - (Math.abs(row - 7) + Math.abs(col - 7));
+
+        return (
+            attackScore +
+            defenseScore * 0.9 +
+            centerBonus * 2 +
+            Math.random() * 25
+        );
+    }
+
+
+    function evaluatePlacedStone(row, col, player) {
+        let total = 0;
+
+        for (const [dr, dc] of RENJU_DIRECTIONS) {
+            const forward = countDirection(
+                row,
+                col,
+                dr,
+                dc,
+                player
+            );
+
+            const backward = countDirection(
+                row,
+                col,
+                -dr,
+                -dc,
+                player
+            );
+
+            const length = 1 + forward + backward;
+
+            const forwardEndRow = row + (forward + 1) * dr;
+            const forwardEndCol = col + (forward + 1) * dc;
+            const backwardEndRow = row - (backward + 1) * dr;
+            const backwardEndCol = col - (backward + 1) * dc;
+
+            let openEnds = 0;
+
+            if (
+                isInside(forwardEndRow, forwardEndCol) &&
+                board[forwardEndRow][forwardEndCol] === EMPTY
+            ) {
+                openEnds++;
+            }
+
+            if (
+                isInside(backwardEndRow, backwardEndCol) &&
+                board[backwardEndRow][backwardEndCol] === EMPTY
+            ) {
+                openEnds++;
+            }
+
+            if (length >= 5) {
+                total += 1000000;
+            } else if (length === 4 && openEnds === 2) {
+                total += 70000;
+            } else if (length === 4 && openEnds === 1) {
+                total += 15000;
+            } else if (length === 3 && openEnds === 2) {
+                total += 6000;
+            } else if (length === 3 && openEnds === 1) {
+                total += 1200;
+            } else if (length === 2 && openEnds === 2) {
+                total += 450;
+            } else if (length === 2 && openEnds === 1) {
+                total += 100;
+            } else {
+                total += 12;
+            }
+        }
+
+        return total;
+    }
+
+
+    function countDirection(row, col, dr, dc, player) {
+        let count = 0;
+        let r = row + dr;
+        let c = col + dc;
+
+        while (
+            isInside(r, c) &&
+            board[r][c] === player
+        ) {
+            count++;
+            r += dr;
+            c += dc;
+        }
+
+        return count;
+    }
+
+// ==========================================
+// 렌주룰 금수 판정
+// ==========================================
+
+const RENJU_DIRECTIONS = [
+    [0, 1],    // 가로
+    [1, 0],    // 세로
+    [1, 1],    // 오른쪽 아래 대각선
+    [1, -1]    // 왼쪽 아래 대각선
+];
+
+
+function isInside(row, col) {
+    return (
+        row >= 0 &&
+        row < BOARD_SIZE &&
+        col >= 0 &&
+        col < BOARD_SIZE
+    );
+}
+
+
+/*
+한 방향과 반대 방향을 합쳐
+연속된 돌의 전체 개수를 센다.
+*/
+function getContinuousCount(row, col, dr, dc, player) {
+    let count = 1;
+
+    let r = row + dr;
+    let c = col + dc;
+
+    while (
+        isInside(r, c) &&
+        board[r][c] === player
+    ) {
+        count++;
+        r += dr;
+        c += dc;
+    }
+
+    r = row - dr;
+    c = col - dc;
+
+    while (
+        isInside(r, c) &&
+        board[r][c] === player
+    ) {
+        count++;
+        r -= dr;
+        c -= dc;
+    }
+
+    return count;
+}
+
+
+/*
+흑이 정확히 5개를 만들었는지 확인한다.
+*/
+function hasExactFive(row, col, player) {
+    for (const [dr, dc] of RENJU_DIRECTIONS) {
+        const count = getContinuousCount(
+            row,
+            col,
+            dr,
+            dc,
+            player
+        );
+
+        if (count === 5) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+/*
+백의 승리를 위해 5개 이상인지 확인한다.
+*/
+function hasFiveOrMore(row, col, player) {
+    for (const [dr, dc] of RENJU_DIRECTIONS) {
+        const count = getContinuousCount(
+            row,
+            col,
+            dr,
+            dc,
+            player
+        );
+
+        if (count >= 5) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+/*
+장목 판정:
+흑돌이 한 방향으로 6개 이상 이어지면 장목이다.
+*/
+function hasOverline(row, col) {
+    for (const [dr, dc] of RENJU_DIRECTIONS) {
+        const count = getContinuousCount(
+            row,
+            col,
+            dr,
+            dc,
+            BLACK
+        );
+
+        if (count >= 6) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+/*
+특정 방향의 줄을 문자열로 가져온다.
+
+X = 흑돌
+O = 백돌 또는 오목판 밖
+. = 빈자리
+
+중앙 인덱스는 방금 놓은 흑돌이다.
+*/
+function getLineString(row, col, dr, dc, distance = 5) {
+    let line = "";
+
+    for (let offset = -distance; offset <= distance; offset++) {
+        const r = row + offset * dr;
+        const c = col + offset * dc;
+
+        if (!isInside(r, c)) {
+            line += "O";
+        } else if (board[r][c] === BLACK) {
+            line += "X";
+        } else if (board[r][c] === WHITE) {
+            line += "O";
+        } else {
+            line += ".";
+        }
+    }
+
+    return line;
+}
+
+
+/*
+새로 놓은 흑돌을 포함하는 진짜 '4'의 개수를 센다.
+
+단순히 흑돌 4개와 빈칸 1개만 찾지 않고,
+그 빈칸에 가상으로 착수했을 때 정확히 5가 되는지 확인한다.
+따라서 장목으로만 이어지는 가짜 4는 제외된다.
+*/
+function countFours(row, col) {
+    const fourGroups = new Set();
+    const centerIndex = 5;
+
+    for (
+        let directionIndex = 0;
+        directionIndex < RENJU_DIRECTIONS.length;
+        directionIndex++
+    ) {
+        const [dr, dc] = RENJU_DIRECTIONS[directionIndex];
+        const line = getLineString(row, col, dr, dc, 5);
+
+        for (let start = 0; start <= line.length - 5; start++) {
+            const end = start + 5;
+
+            // 방금 놓은 돌을 포함하는 범위만 검사
+            if (
+                centerIndex < start ||
+                centerIndex >= end
+            ) {
+                continue;
+            }
+
+            const windowText = line.slice(start, end);
+
+            if (windowText.includes("O")) {
+                continue;
+            }
+
+            const blackCount =
+                [...windowText].filter(
+                    value => value === "X"
+                ).length;
+
+            const emptyCount =
+                [...windowText].filter(
+                    value => value === "."
+                ).length;
+
+            if (blackCount === 4 && emptyCount === 1) {
+                const emptyIndex =
+                    [...windowText].findIndex(
+                        value => value === "."
+                    );
+
+                const absoluteEmptyOffset =
+                    start + emptyIndex - centerIndex;
+
+                const emptyRow =
+                    row + absoluteEmptyOffset * dr;
+
+                const emptyCol =
+                    col + absoluteEmptyOffset * dc;
+
+                // 빈칸을 채웠을 때 정확히 5가 되어야 진짜 4이다.
+                board[emptyRow][emptyCol] = BLACK;
+
+                const becomesFive =
+                    getContinuousCount(
+                        emptyRow,
+                        emptyCol,
+                        dr,
+                        dc,
+                        BLACK
+                    ) === 5;
+
+                board[emptyRow][emptyCol] = EMPTY;
+
+                if (!becomesFive) {
+                    continue;
+                }
+
+                const stonePositions = [];
+
+                for (let i = 0; i < 5; i++) {
+                    if (windowText[i] === "X") {
+                        const absoluteOffset =
+                            start + i - centerIndex;
+
+                        const stoneRow =
+                            row + absoluteOffset * dr;
+
+                        const stoneCol =
+                            col + absoluteOffset * dc;
+
+                        stonePositions.push(
+                            `${stoneRow},${stoneCol}`
+                        );
+                    }
+                }
+
+                stonePositions.sort();
+
+                const groupKey =
+                    `${directionIndex}:` +
+                    stonePositions.join("|");
+
+                fourGroups.add(groupKey);
+            }
+        }
+    }
+
+    return fourGroups.size;
+}
+
+
+/*
+한 방향으로 연속된 흑돌 좌표를 반환한다.
+*/
+function getRunCells(row, col, dr, dc) {
+    let startRow = row;
+    let startCol = col;
+
+    while (
+        isInside(startRow - dr, startCol - dc) &&
+        board[startRow - dr][startCol - dc] === BLACK
+    ) {
+        startRow -= dr;
+        startCol -= dc;
+    }
+
+    const cells = [];
+    let r = startRow;
+    let c = startCol;
+
+    while (
+        isInside(r, c) &&
+        board[r][c] === BLACK
+    ) {
+        cells.push([r, c]);
+        r += dr;
+        c += dc;
+    }
+
+    return cells;
+}
+
+
+/*
+가상 착수 결과가 '양쪽으로 정확히 5를 만들 수 있는
+연속된 열린 4'인지 확인한다.
+*/
+function makesStraightFour(
+    originRow,
+    originCol,
+    extensionRow,
+    extensionCol,
+    dr,
+    dc
+) {
+    const run = getRunCells(
+        extensionRow,
+        extensionCol,
+        dr,
+        dc
+    );
+
+    if (run.length !== 4) {
+        return false;
+    }
+
+    const containsOrigin = run.some(
+        ([r, c]) => r === originRow && c === originCol
+    );
+
+    if (!containsOrigin) {
+        return false;
+    }
+
+    const first = run[0];
+    const last = run[run.length - 1];
+
+    const beforeRow = first[0] - dr;
+    const beforeCol = first[1] - dc;
+    const afterRow = last[0] + dr;
+    const afterCol = last[1] + dc;
+
+    if (
+        !isInside(beforeRow, beforeCol) ||
+        !isInside(afterRow, afterCol) ||
+        board[beforeRow][beforeCol] !== EMPTY ||
+        board[afterRow][afterCol] !== EMPTY
+    ) {
+        return false;
+    }
+
+    // 양쪽 어느 곳에 두어도 장목이 아닌 정확한 5여야 한다.
+    board[beforeRow][beforeCol] = BLACK;
+    const beforeMakesFive =
+        getContinuousCount(
+            beforeRow,
+            beforeCol,
+            dr,
+            dc,
+            BLACK
+        ) === 5;
+    board[beforeRow][beforeCol] = EMPTY;
+
+    board[afterRow][afterCol] = BLACK;
+    const afterMakesFive =
+        getContinuousCount(
+            afterRow,
+            afterCol,
+            dr,
+            dc,
+            BLACK
+        ) === 5;
+    board[afterRow][afterCol] = EMPTY;
+
+    return beforeMakesFive && afterMakesFive;
+}
+
+
+function getBoardStateKey(row, col) {
+    return (
+        board.map(boardRow => boardRow.join("")).join("/") +
+        `:${row},${col}`
+    );
+}
+
+
+/*
+이미 가상으로 놓인 흑돌이 금수인지 재귀적으로 검사한다.
+정확한 5를 완성한 수는 금수가 아니라 승리 수로 우선한다.
+*/
+function isForbiddenVirtualBlackMove(row, col, memo) {
+    if (hasExactFive(row, col, BLACK)) {
+        return false;
+    }
+
+    const key = getBoardStateKey(row, col);
+
+    if (memo.has(key)) {
+        return memo.get(key);
+    }
+
+    if (hasOverline(row, col)) {
+        memo.set(key, true);
+        return true;
+    }
+
+    if (countFours(row, col) >= 2) {
+        memo.set(key, true);
+        return true;
+    }
+
+    const realThreeCount =
+        countRealOpenThrees(row, col, memo);
+
+    const forbidden = realThreeCount >= 2;
+    memo.set(key, forbidden);
+    return forbidden;
+}
+
+
+/*
+새 돌로 생긴 '진짜 열린 3'의 수를 센다.
+
+1. 같은 방향의 빈칸에 흑돌을 가상으로 둔다.
+2. 양쪽이 열린 연속 4가 되는지 확인한다.
+3. 그 가상 착수가 장목ㆍ사사ㆍ삼삼 금수가 아닌지 확인한다.
+4. 모든 조건을 통과한 경우에만 진짜 3으로 인정한다.
+*/
+function countRealOpenThrees(row, col, memo = new Map()) {
+    const realThreeGroups = new Set();
+
+    for (
+        let directionIndex = 0;
+        directionIndex < RENJU_DIRECTIONS.length;
+        directionIndex++
+    ) {
+        const [dr, dc] = RENJU_DIRECTIONS[directionIndex];
+
+        // 열린 4를 만드는 수는 원래 돌에서 최대 4칸 이내에 있다.
+        for (let offset = -4; offset <= 4; offset++) {
+            if (offset === 0) {
+                continue;
+            }
+
+            const extensionRow = row + offset * dr;
+            const extensionCol = col + offset * dc;
+
+            if (
+                !isInside(extensionRow, extensionCol) ||
+                board[extensionRow][extensionCol] !== EMPTY
+            ) {
+                continue;
+            }
+
+            board[extensionRow][extensionCol] = BLACK;
+
+            // 3에서 4로 가는 수가 즉시 5를 만들면 '3'의 연장이 아니다.
+            const makesFive = hasExactFive(
+                extensionRow,
+                extensionCol,
+                BLACK
+            );
+
+            const straightFour =
+                !makesFive &&
+                makesStraightFour(
+                    row,
+                    col,
+                    extensionRow,
+                    extensionCol,
+                    dr,
+                    dc
+                );
+
+            let legalExtension = false;
+
+            if (straightFour) {
+                legalExtension =
+                    !isForbiddenVirtualBlackMove(
+                        extensionRow,
+                        extensionCol,
+                        memo
+                    );
+            }
+
+            if (straightFour && legalExtension) {
+                const run = getRunCells(
+                    extensionRow,
+                    extensionCol,
+                    dr,
+                    dc
+                );
+
+                // 가상으로 추가한 돌을 제외한 원래 세 돌로 중복 제거
+                const originalThree = run
+                    .filter(
+                        ([r, c]) =>
+                            !(r === extensionRow &&
+                              c === extensionCol)
+                    )
+                    .map(([r, c]) => `${r},${c}`)
+                    .sort();
+
+                if (originalThree.length === 3) {
+                    const groupKey =
+                        `${directionIndex}:` +
+                        originalThree.join("|");
+
+                    realThreeGroups.add(groupKey);
+                }
+            }
+
+            board[extensionRow][extensionCol] = EMPTY;
+        }
+    }
+
+    return realThreeGroups.size;
+}
+
+
+/*
+최종 금수 판정 함수
+
+금수가 아니면 null을 반환하고,
+금수라면 설명 문장을 반환한다.
+*/
+function checkBlackForbiddenMove(row, col) {
+    if (hasOverline(row, col)) {
+        return (
+            "장목 금수입니다. " +
+            "흑돌이 한 줄로 6개 이상 연결되었습니다."
+        );
+    }
+
+    const fourCount = countFours(row, col);
+
+    if (fourCount >= 2) {
+        return (
+            "사사(4×4) 금수입니다. " +
+            "한 번의 착수로 4가 " +
+            `${fourCount}개 만들어졌습니다.`
+        );
+    }
+
+    const threeCount = countRealOpenThrees(
+        row,
+        col,
+        new Map()
+    );
+
+    if (threeCount >= 2) {
+        return (
+            "삼삼(3×3) 금수입니다. " +
+            "한 번의 착수로 열린 3이 " +
+            `${threeCount}개 만들어졌습니다.`
+        );
+    }
+
+    return null;
+}
+
+
+    // ---------------------------
+    // 승리 판정
+    // ---------------------------
+
+    function checkWin(row, col, player) {
+        const directions = [
+            [0, 1],   // 가로
+            [1, 0],   // 세로
+            [1, 1],   // 대각선 ↘
+            [1, -1]   // 대각선 ↙
+        ];
+
+        for (const [dr, dc] of directions) {
+            let connected = 1;
+
+            connected += countStones(
+                row,
+                col,
+                dr,
+                dc,
+                player
+            );
+
+            connected += countStones(
+                row,
+                col,
+                -dr,
+                -dc,
+                player
+            );
+
+            if (connected >= 5) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    function countStones(row, col, dr, dc, player) {
+        let count = 0;
+
+        row += dr;
+        col += dc;
+
+        while (
+            row >= 0 &&
+            row < BOARD_SIZE &&
+            col >= 0 &&
+            col < BOARD_SIZE &&
+            board[row][col] === player
+        ) {
+            count++;
+            row += dr;
+            col += dc;
+        }
+
+        return count;
+    }
+
+
+    function isBoardFull() {
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                if (board[row][col] === EMPTY) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+
+    // 최강: 시간 제한 반복 심화, 강제 응수 연장, 전술/판세 캐시.
+    // 사용자 제공 ZIP의 번호/좌표가 확인된 대표 진행만 전사했다.
+    // 자료의 '무적수'라는 명칭은 모든 백 응수에 대한 엔진의 필승 보증이 아니다.
+    // A1=(row14,col0). moves는 흑/백 교대이며 각 흑 차례의 전체 판을 저장한다.
+    const OPENING_LINES = [
+        {name:'운월 · G8 수비 / H7', source:'01: y6800 첫 진행도',
+         moves:'H8 H9 I8 G8 I10 I9 J9 H7 K8 H11 J8 L8 J10 J11 L10 K10 I7 K9 J6'},
+        {name:'운월 · G8 수비 / H11', source:'01: y7400 둘째 진행도',
+         moves:'H8 H9 I8 G8 I10 I9 J9 H11 K10 L11 J10 L10 J8 J7 L8 K8 I11 K9 J12 J11 H10'},
+        {name:'운월 · J8 수비', source:'02: y6900 첫 진행도',
+         moves:'H8 H9 I8 J8 I7 H10 I9 I10 I5 I6 J6 K5 K7 L8 G7 J10 H7 J7 H4 G3 H6'},
+        {name:'운월 · I7 수비 / H7', source:'03: y6000 첫 진행도',
+         moves:'H8 H9 I8 I7 G6 G8 F6 H7 F7 E6 E8 D9 F5 F4 E5 G7 H5'},
+        {name:'운월 · I7 수비 / G7', source:'03: y6650 둘째 진행도',
+         moves:'H8 H9 I8 I7 G6 G8 F6 G7 F5 H7 F7 F4 E8 D9 E6 D6 D7 C8 F9'},
+        {name:'항성 · 가운데 수비', source:'06: y2300~7800 진행도',
+         moves:'H8 I9 J8 I8 I7 H6 J6 K5 J7 J9 H7 K7 G8'},
+        {name:'항성 · H7 수비 / 가운데', source:'07: y5400 진행도',
+         moves:'H8 I9 J8 H7 I7 I8 J6 K5 H6 G5 I5 G6 J9 J7 L8 K7 K9 L10 I11 J10 F8 G7 G9'},
+        {name:'항성 · 날일자 유지', source:'07: y7300 진행도 (실패 예제 제외)',
+         moves:'H8 I9 J8 H7 I7 J6 K9 H6 K8 I8 K10 K11 J10 L10 J9 J11 L7 I10 K7 K6 M7'}
+    ];
+    function openingCoord(text) {
+        return {row:15-Number(text.slice(1)),col:text.charCodeAt(0)-65};
+    }
+    function openingTransform(m,t) {
+        let r=m.row,c=m.col;
+        if(t>=4) c=14-c;
+        for(let i=0;i<t%4;i++) [r,c]=[c,14-r];
+        return {row:r,col:c};
+    }
+    // 전체 판 일치: 보이지 않은 상대 돌을 무시하고 수순을 강행하지 않는다.
+    const VERIFIED_OPENING_BOOK = new Map();
+    for(const line of OPENING_LINES) {
+        const moves=line.moves.split(' ').map(openingCoord);
+        for(let t=0;t<8;t++) {
+            const cells=Array(225).fill(0);
+            moves.forEach((original,i)=> {
+                const m=openingTransform(original,t), key=cells.join('');
+                if(i%2===0 && !VERIFIED_OPENING_BOOK.has(key))
+                    VERIFIED_OPENING_BOOK.set(key,{...m,name:line.name,source:line.source,ply:i+1});
+                cells[m.row*15+m.col]=i%2===0?BLACK:WHITE;
+            });
+        }
+    }
+    function lookupOpening() {
+        if(aiPlayer!==BLACK) return null;
+        const m=VERIFIED_OPENING_BOOK.get(strongKey());
+        return m&&isLegalMoveForPlayer(m.row,m.col,BLACK)?m:null;
+    }
+    let strongEnd = 0, strongNodes = 0;
+    let strongStats = {};
+    let strongProfiles = new Map(), strongTT = new Map();
+    const STRONG_TIMEOUT = Symbol('strong-timeout');
+    const MATE = 100000000;
+
+    function stopStrongWorker() {
+        if (strongWorker) strongWorker.terminate();
+        if (strongWorkerUrl) URL.revokeObjectURL(strongWorkerUrl);
+        if (strongWatchdog) clearTimeout(strongWatchdog);
+        strongWorker = strongWorkerUrl = strongWatchdog = null;
+    }
+    function launchStrongWorker() {
+        stopStrongWorker();
+        function failed() {
+            stopStrongWorker(); aiThinking = false;
+            statusElement.textContent = 'AI 계산을 완료하지 못했습니다. 같은 돌로 다시 시작해 주세요.';
+            gameOver = true;setGameControls(true);
+        }
+        try {
+            strongWorkerUrl = URL.createObjectURL(new Blob([scriptSource], {type:'text/javascript'}));
+            const worker = strongWorker = new Worker(strongWorkerUrl);
+            worker.onerror = failed;
+            worker.onmessage = ({data}) => {
+                if (worker !== strongWorker || gameOver || currentPlayer !== aiPlayer) return;
+                if (data.error) { failed(); return; }
+                stopStrongWorker(); aiThinking = false;
+                if (!data.move) {
+                    // 흑에게 합법적인 착수점이 하나도 없을 때 패스한다.
+                    currentPlayer = humanPlayer;
+                    startHumanClock();
+                    statusElement.textContent = 'AI가 둘 수 있는 합법적인 자리가 없어 패스했습니다. 플레이어 차례입니다.';
+                    return;
+                }
+                const m = data.move;
+                if (!isLegalMoveForPlayer(m.row, m.col, aiPlayer)) { failed(); return; }
+                console.info('최강 탐색 결과', data.stats);
+                placeStone(m.row, m.col, 'ai');
+            };
+            strongWatchdog = setTimeout(failed, 18000);
+            worker.postMessage({board, aiPlayer, budgetMs:8000});
+        } catch (e) { failed(); }
+    }
+    function strongClock() {
+        if (performance.now() >= strongEnd) throw STRONG_TIMEOUT;
+    }
+    function strongKey() { return board.map(r=>r.join('')).join(''); }
+    function chooseStrongWhiteOpening() {
+        if(aiPlayer!==WHITE) return null;
+        const stones=[];
+        for(let r=0;r<BOARD_SIZE;r++) for(let c=0;c<BOARD_SIZE;c++)
+            if(board[r][c]!==EMPTY) stones.push({row:r,col:c,player:board[r][c]});
+        if(stones.length!==1||stones[0].player!==BLACK) return null;
+        const first=stones[0];
+        // Orthogonal neighbour, diagonal neighbour, and the old two-space reply.
+        const styles=[{name:'직접 방어형',dr:0,dc:1},{name:'간접 방어형',dr:1,dc:1},
+            {name:'두 칸 간격형',dr:2,dc:0}];
+        const groups=styles.map(style=>{
+            let dr=style.dr,dc=style.dc;const moves=[];
+            for(let t=0;t<4;t++) {
+                const row=first.row+dr,col=first.col+dc;
+                if(isLegalMoveForPlayer(row,col,WHITE)) moves.push({row,col});
+                [dr,dc]=[dc,-dr];
+            }
+            return {name:style.name,moves};
+        }).filter(group=>group.moves.length);
+        if(!groups.length) return null;
+        const group=randomItem(groups);
+        strongStats.opening=group.name;
+        return randomItem(group.moves);
+    }
+    function classifyFirstReply() {
+        const cells=[];
+        for(let r=0;r<15;r++) for(let c=0;c<15;c++) if(board[r][c]) cells.push({r,c,p:board[r][c]});
+        if(cells.length!==2 || board[7][7]!==BLACK) return null;
+        const w=cells.find(m=>m.p===WHITE); if(!w) return null;
+        const dr=Math.abs(w.r-7),dc=Math.abs(w.c-7);
+        return dr+dc===1 ? '직접' : dr===1&&dc===1 ? '간접' : '그 외';
+    }
+    // 이미 놓인 돌로 생긴 4의 그룹: 한 열린 4의 양끝은 중복 계산하지 않는다.
+    function strongShape(r,c,p) {
+        const fours=new Set(), threes=new Set(); let twos=0, openFours=0;
+        for(let d=0;d<4;d++) {
+            const [dr,dc]=RENJU_DIRECTIONS[d];
+            for(let start=-4;start<=0;start++) {
+                const stones=[]; let hole=null,valid=true;
+                for(let i=0;i<5;i++) {
+                    const rr=r+(start+i)*dr,cc=c+(start+i)*dc;
+                    if(!isInside(rr,cc)||board[rr][cc]===3-p) {valid=false;break;}
+                    if(board[rr][cc]===p) stones.push(rr*15+cc);
+                    else if(hole) {valid=false;break;} else hole=[rr,cc];
+                }
+                if(valid&&stones.length===4&&hole) {
+                    const [rr,cc]=hole; board[rr][cc]=p;
+                    const n=getContinuousCount(rr,cc,dr,dc,p); board[rr][cc]=EMPTY;
+                    if(p===WHITE?n>=5:n===5) fours.add(d+':'+stones.join(','));
+                }
+            }
+            const f=countDirection(r,c,dr,dc,p), b=countDirection(r,c,-dr,-dc,p);
+            const ar=r+(f+1)*dr,ac=c+(f+1)*dc,br=r-(b+1)*dr,bc=c-(b+1)*dc;
+            const both=isInside(ar,ac)&&isInside(br,bc)&&board[ar][ac]===0&&board[br][bc]===0;
+            if(1+f+b===4 && both) openFours++;
+            if(1+f+b===2 && both) twos++;
+            // .XXX.. / .XX.X. 같은 모양을 가상 착수로 검증한다.
+            for(let start=-4;start<=0;start++) {
+                const lr=r+start*dr,lc=c+start*dc,rr=r+(start+5)*dr,rc=c+(start+5)*dc;
+                if(!isInside(lr,lc)||!isInside(rr,rc)||board[lr][lc]||board[rr][rc]) continue;
+                const cells=[];let hole=null,ok=true;
+                for(let i=1;i<=4;i++) {
+                    const x=r+(start+i)*dr,y=c+(start+i)*dc;
+                    if(board[x][y]===p) cells.push(x*15+y);
+                    else if(board[x][y]!==EMPTY||hole) {ok=false;break;} else hole=[x,y];
+                }
+                if(!ok||cells.length!==3||!hole||!cells.includes(r*15+c)) continue;
+                const [x,y]=hole;
+                board[x][y]=p;
+                let legal=true;
+                try {
+                    if(p===BLACK) legal=!hasExactFive(x,y,BLACK)&&!isForbiddenVirtualBlackMove(x,y,new Map());
+                    if(legal && createsStraightOpenFourInDirection(r,c,x,y,p,dr,dc))
+                        threes.add(d+':'+cells.join(','));
+                } finally {board[x][y]=EMPTY;}
+            }
+        }
+        const four=fours.size,three=threes.size;
+        const fork=(four>0&&three>0)||(p===WHITE&&(four>=2||three>=2));
+        const value=four*17000+openFours*180000+three*6000+twos*450+
+            (four>0&&three>0?200000:0)+(p===WHITE&&four>=2?300000:0)+
+            (p===WHITE&&three>=2?65000:0);
+        return {four,three,twos,fork,value};
+    }
+    function strongMoves(p) {
+        strongClock();
+        const key=strongKey()+':'+p;
+        if(strongProfiles.has(key)) return strongProfiles.get(key);
+        const result=[];
+        for(const m of getRawNearbyMoves(2)) {
+            strongClock();
+            board[m.row][m.col]=p;
+            try {
+                const win=isCurrentStoneWinning(m.row,m.col,p);
+                if(!win&&p===BLACK&&isForbiddenVirtualBlackMove(m.row,m.col,new Map())) continue;
+                const s=win?{four:0,three:0,twos:0,fork:false,value:MATE}:strongShape(m.row,m.col,p);
+                result.push({...m,...s,win});
+            } finally {board[m.row][m.col]=EMPTY;}
+        }
+        if(strongProfiles.size>12000) strongProfiles.clear();
+        strongProfiles.set(key,result);
+        return result;
+    }
+    function strongOrdered(p,ply) {
+        const own=strongMoves(p), opp=strongMoves(3-p);
+        const wins=own.filter(m=>m.win);
+        if(wins.length) return {moves:wins,forced:true,own,opp};
+        const threats=opp.filter(m=>m.win), ids=new Set(threats.map(m=>m.row*15+m.col));
+        if(ids.size) return {moves:own.filter(m=>ids.has(m.row*15+m.col)),forced:true,own,opp};
+        const other=new Map(opp.map(m=>[m.row*15+m.col,m]));
+        const sorted=own.map(m=> {
+            const e=other.get(m.row*15+m.col);
+            // 백은 흑의 4·3 예정점을 높은 우선순위로 예방한다.
+            const prevention=e?(e.fork?e.value*1.45:e.value*1.08):0;
+            // 즉시 4가 없으면 열린 2와 여러 방향 확장을 낮은 비중으로 우대한다.
+            const quiet=p===WHITE&&m.four===0 ? m.twos*260 : 0;
+            return {...m,order:m.value+prevention+quiet+14-Math.abs(m.row-7)-Math.abs(m.col-7)};
+        }).sort((a,b)=>b.order-a.order);
+        const tactical=sorted.filter(m=>m.four||m.fork||(other.get(m.row*15+m.col)?.fork));
+        const selected=new Map(tactical.map(m=>[m.row*15+m.col,m]));
+        for(const m of sorted.slice(0,ply===0?16:ply<3?10:6)) selected.set(m.row*15+m.col,m);
+        return {moves:[...selected.values()].sort((a,b)=>b.order-a.order),forced:false,own,opp};
+    }
+    function strongEval(own,opp) {
+        const top=a=>a.map(m=>m.value).sort((a,b)=>b-a);
+        const a=top(own),b=top(opp);
+        return Math.max(-MATE/2,Math.min(MATE/2,(a[0]||0)+.3*(a[1]||0)-(b[0]||0)*1.12-.35*(b[1]||0)));
+    }
+    function strongSearch(depth,p,alpha,beta,ply,extensions) {
+        strongClock(); strongNodes++;
+        if(isBoardFull()) return 0;
+        const key=strongKey()+':'+p+':'+extensions+':'+ply;
+        const entry=strongTT.get(key), originalAlpha=alpha, originalBeta=beta;
+        if(entry&&entry.depth>=depth) {
+            if(entry.flag===0) return entry.score;
+            if(entry.flag===1) alpha=Math.max(alpha,entry.score); else beta=Math.min(beta,entry.score);
+            if(alpha>=beta) return entry.score;
+        }
+        const pos=strongOrdered(p,ply);
+        if(pos.own.some(m=>m.win)) return MATE-ply;
+        if(pos.opp.filter(m=>m.win).length>=2) return -MATE+ply+1;
+        if(!pos.moves.length) return pos.forced?-MATE+ply+1:strongEval(pos.own,pos.opp);
+        if(depth<=0 && !(pos.forced&&extensions>0)) return strongEval(pos.own,pos.opp);
+        let best=-Infinity;
+        for(const m of pos.moves) {
+            board[m.row][m.col]=p;
+            let value;
+            try {value=-strongSearch(depth-1,3-p,-beta,-alpha,ply+1,depth<=0?extensions-1:extensions);}
+            finally {board[m.row][m.col]=EMPTY;}
+            best=Math.max(best,value);alpha=Math.max(alpha,best);
+            if(alpha>=beta) break;
+        }
+        if(strongTT.size>20000) strongTT.clear();
+        strongTT.set(key,{depth,score:best,flag:best<=originalAlpha?2:best>=originalBeta?1:0});
+        return best;
+    }
+    function chooseStrongMove(budgetMs=8000) {
+        const started=performance.now();strongEnd=started+budgetMs;strongNodes=0;
+        strongProfiles=new Map();strongTT=new Map();
+        strongStats={completedDepth:0,maxDepth:11,firstReply:classifyFirstReply(),book:false};
+        if(!boardHasStone()) return {row:7,col:7};
+        const whiteOpening=chooseStrongWhiteOpening();
+        if(whiteOpening) {
+            strongStats.elapsedMs=Math.round(performance.now()-started);
+            return whiteOpening;
+        }
+        const book=lookupOpening();
+        if(book) {
+            strongStats.book=true;strongStats.opening=book.name;strongStats.source=book.source;
+            strongStats.bookPly=book.ply;strongStats.elapsedMs=Math.round(performance.now()-started);
+            return {row:book.row,col:book.col};
+        }
+        const snapshot=board.map(r=>r.slice()); let best=null;
+        // 시간 초과 전 사용할 합법적인 기본 수. 전체 판을 검사하므로 주변 후보가 전부 금수여도 패스하지 않는다.
+        outer:for(let r=0;r<15;r++)for(let c=0;c<15;c++)if(isLegalMoveForPlayer(r,c,aiPlayer)) {best={row:r,col:c};break outer;}
+        try {
+            let pos=strongOrdered(aiPlayer,0);
+            if(pos.moves.length) best=pos.moves[0];
+            if(pos.own.some(m=>m.win)) return pos.own.find(m=>m.win);
+            for(let depth=1;depth<=11;depth++) {
+                let top=-Infinity,chosen=best,alpha=-Infinity;
+                for(const m of pos.moves) {
+                    strongClock();board[m.row][m.col]=aiPlayer;
+                    let value;
+                    try {value=-strongSearch(depth-1,humanPlayer,-MATE,-alpha,1,4);}
+                    finally {board[m.row][m.col]=EMPTY;}
+                    if(value>top) {top=value;chosen=m;} alpha=Math.max(alpha,value);
+                }
+                best=chosen;strongStats.completedDepth=depth;
+                pos.moves.sort((a,b)=>(b.row===best.row&&b.col===best.col?1:0)-(a.row===best.row&&a.col===best.col?1:0));
+                if(Math.abs(top)>MATE-1000) break;
+            }
+        } catch(e) {if(e!==STRONG_TIMEOUT) throw e;}
+        finally {board=snapshot;strongStats.nodes=strongNodes;strongStats.elapsedMs=Math.round(performance.now()-started);}
+        return best;
+    }
+
+    if (isEngineWorker) {
+        self.onmessage = ({data}) => {
+            board = data.board;
+            aiPlayer = data.aiPlayer;
+            humanPlayer = aiPlayer === BLACK ? WHITE : BLACK;
+            try {
+                const chosen = chooseStrongMove(data.budgetMs || 8000);
+                const move = chosen ? normalSymmetricMove(chosen) : null;
+                self.postMessage({move, stats: strongStats});
+            } catch (error) {
+                self.postMessage({error: String(error)});
+            }
+        };
+        return;
+    }
+    // 첫 화면 준비
+    loadRecords();
+    rankingWins=readSavedWins();renderRankings();
+    for(const id of ['student-id','student-name'])
+        document.getElementById(id).addEventListener('input',updateStartButton);
+    document.getElementById('ranking-import').addEventListener('change',event=>window.importRankings(event.target.files[0]));
+    window.addEventListener('storage',event=>{
+        if(event.key===RANKING_KEY) {rankingWins=readSavedWins();renderRankings();}
+    });
+    updateStartButton();
+    createEmptyBoard();
+    drawBoard();
+    startScreen.style.display = "block";
+    gameScreen.style.display = "none";
+})();
+</script>
+</body>
+</html>
